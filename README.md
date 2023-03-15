@@ -1,1 +1,1 @@
-# pico-ay
+PicoAY project

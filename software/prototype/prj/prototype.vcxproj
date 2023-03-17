@@ -11,6 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\main.cpp" />
     <ClCompile Include="..\src\prototype.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

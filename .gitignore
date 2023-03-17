@@ -1,3 +1,7 @@
+firmware/.vs
+firmware/Debug
+firmware/Release
+
 software/prototype/prj/.vs
 software/prototype/prj/Debug
 software/prototype/prj/Release

@@ -35,7 +35,7 @@
     .equ    bit7 = 7
 
     .equ    NS_B16 = bit7
-    .equ    ERESET = bit6
+    .equ    EG_RES = bit6
 
     ; config 0 bits:
     ; b0 - disable channel A
@@ -90,7 +90,7 @@ reg_mask:
     .db     0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0x1F, 0xFF
     .db     0x1F, 0x1F, 0x1F, 0xFF, 0xFF, 0x0F, 0xFF, 0xFF
 
-amplitudes:
+amplitude:
     .db     0x00, 0x03, 0x04, 0x05, 0x08, 0x0C, 0x10, 0x1B
     .db     0x20, 0x34, 0x4B, 0x5F, 0x7E, 0xA2, 0xCD, 0xFF
 
@@ -103,33 +103,33 @@ envelopes:
 
 ; ENTRY POINT ------------------------------------------------------------------
 main:
-    ; setup stack and assess to flash ------------------------------------------
-    ldi     AL, RAMEND              ; load RAMEND into r16
-    out     SPL, AL                 ; store r16 in stack pointer
+    ; Setup stack and access to FLASH ------------------------------------------
+    ldi     AL, RAMEND
+    out     SPL, AL
     ldi     ZH, high(MAPPED_FLASH_START)
 
-    ; setup main clock to 8 MHz ------------------------------------------------
+    ; Setup main clock to 8 MHz ------------------------------------------------
     ldi     AL, 0x00
-    ldi     AH, 0xD8                ; write correct signature
-    out     CCP, AH                 ; to Configuration Change Protection register
-    out     CLKPSR, AL              ; and set clock division factor to 1 for 8 MHz
+    ldi     AH, 0xD8                ; Write correct signature to Configuration
+    out     CCP, AH                 ; Change Protection register and set clock
+    out     CLKPSR, AL              ; division factor to 1 for 8 MHz
 
-    ; setup external interrupt INT0 --------------------------------------------
-    cbi     DDRB,  PORTB2           ; set PORTB2 as input
-    sbi     PUEB,  PUEB2            ; enable pull-up resistor on PORTB2
-    cbi     EICRA, ISC00            ; falling edge of INT0 generates an
+    ; Setup external interrupt INT0 --------------------------------------------
+    cbi     DDRB,  PORTB2           ; Set PORTB2 as input
+    sbi     PUEB,  PUEB2            ; Enable pull-up resistor on PORTB2
+    cbi     EICRA, ISC00            ; Falling edge of INT0 generates an
     sbi     EICRA, ISC01            ; interrupt request
-    sbi     EIMSK, INT0             ; allow INT0 ISR execution
+    sbi     EIMSK, INT0             ; Allow INT0 ISR execution
 
-    ; setup Timer0 for Fast PWM 8-bit with 0xFF top ----------------------------
-    sbi     DDRB, PORTB0            ; set PORTB0 and PORTB1 as output
+    ; Setup Timer0 for Fast PWM 8-bit with 0xFF top ----------------------------
+    sbi     DDRB, PORTB0            ; Set PORTB0 and PORTB1 as output
     sbi     DDRB, PORTB1            ; for Fast PWM (OC0A and OC0B)
     ldi     AL, 0b10100001          ; Clear OC0A/OC0B on compare match
     out     TCCR0A, AL              ; COM0A1+COM0B1+WGM00 bits set
     ldi     AL, 0b00001001          ; Fast PWM with no prescaling
     out     TCCR0B, AL              ; WGM02+CS00 bits set
 
-    ; setup everything else ----------------------------------------------------
+    ; Setup everything else ----------------------------------------------------
     ldi     FDIV, 0x07              ;
     sei                             ;
     rjmp    loop                    ;
@@ -143,64 +143,64 @@ main:
     ; In this case the receiver will be able to handle new byte properly.
 
 .macro uart_delay
-    ldi     YL, @0                  ; 1 one iteration delays for 3 cpu cycles
+    ldi     YL, @0                  ; 1   One iteration delays for 3 cpu cycles
 delay_loop:
-    dec     YL                      ; 1 last iteration delays for 2 cpu cycles
-    brne    delay_loop              ; 1|2 but we take into account loop init
+    dec     YL                      ; 1   Last iteration delays for 2 cpu cycles
+    brne    delay_loop              ; 1|2 but loop init is taken into account
 .endmacro
 
 int0_isr:
-    push    YL                      ; 2 delay loop counter
-    push    YH                      ; 2 data bits shift register
-    push    ZL                      ; 2 data bits loop counter
-    in      ZL, SREG                ; 1 this ISR needs for 4 + 2 bytes of SRAM
-    push    ZL                      ; 2 to save registers and return address
+    push    YL                      ; 2   Delay loop counter
+    push    YH                      ; 2   Data bits shift register
+    push    ZL                      ; 2   dData bits loop counter
+    in      ZL, SREG                ; 1   This ISR needs for 4+2 bytes of SRAM
+    push    ZL                      ; 2   to save registers and return address
 
-    ; waiting for the middle of the start bit ----------------------------------
+    ; Delay for the middle of the start bit ------------------------------------
     uart_delay STR_BIT_DELAY
 
-    ; read data bits
-    ldi     ZL, 8                   ; 1 init data bits loop counter
-    clr     YH                      ; 1 clear data bits shift register
-    nop                             ; 1 for better delaying
+    ; Read data bits from LSB to MSB -------------------------------------------
+    nop                             ; 1   For better delaying
+    clr     YH                      ; 1   Clear data bits shift register
+    ldi     ZL, 8                   ; 1   Init data bits loop counter
 bit_read_loop:
     uart_delay DAT_BIT_DELAY
-    lsr     YH                      ; 1 shift bit register to right
-    sbic    PINB, PORTB2            ; 1|2 skip next instruction if RX is clear
-    ori     YH, 0x80                ; 1 set data bit 7 if RX is set
-    dec     ZL                      ; 1 go to the next bit
+    lsr     YH                      ; 1   Shift bit register to the right
+    sbic    PINB, PORTB2            ; 1|2 Skip next instruction if RX is clear
+    ori     YH, 0x80                ; 1   Set data bit 7 if RX is set
+    dec     ZL                      ; 1   Go to the next bit
     brne    bit_read_loop           ; 1|2
-    nop                             ; 1 for better delaying
+    nop                             ; 1   For better delaying
 
-    ; check if the received stop bit is correct --------------------------------
+    ; Check if the stop bit is correct -----------------------------------------
     uart_delay STP_BIT_DELAY
-    sbis    PINB, PORTB2            ; skip next instruction if RX is set, it
+    sbis    PINB, PORTB2            ; Skip next instruction if RX is set, it
     rjmp    exit_isr                ; means the stop bit is correct
 
-    ; interpret the received byte according to the protocol --------------------
-    sbrs    raddr, bit4             ; skip next instruction if waiting for 
+    ; Handle received byte according to the protocol ---------------------------
+    sbrs    raddr, bit4             ; Skip next instruction if waiting for 
     rjmp    reg_data_received       ; incoming register address
-    cpi     YH, 0xF0                ; check if received byte is a valid
+    cpi     YH, 0xF0                ; Check if received byte is a valid
     brlo    reg_addr_received       ; register addres, otherwise try to sync
-    ldi     raddr, (1 << bit4)      ; set reg address beyond allowed value to
+    sbr     raddr, bit4             ; Set reg address beyond allowed value to
     rjmp    exit_isr                ; indicate the waiting for allowed value
 reg_addr_received:
-    mov     raddr, YH               ; received data is a register address,
-    rjmp    exit_isr                ; so save it in variable and exit
+    mov     raddr, YH               ; Received data is a register address,
+    rjmp    exit_isr                ; so save it and exit
 reg_data_received:
-    ldi     ZL, low(reg_mask)       ; read register mask from FLASH for  
+    ldi     ZL, low(reg_mask)       ; Read register mask from FLASH for
     add     ZL, raddr               ; current register address
     ld      ZL, Z
-    and     ZL, YH                  ; apply mask for received register data
-    ldi     YL, low(psg_regs)       ; store register data to the SRAM
+    and     ZL, YH                  ; Apply mask for received register data
+    ldi     YL, low (psg_regs)      ; store register data to the SRAM
     ldi     YH, high(psg_regs)
     add     YL, raddr
     st      Y, ZL
-    cpi     raddr, 0x0D             ; check if register address is an
+    cpi     raddr, 0x0D             ; Check if register address is an
     brne    exit_isr                ; envelope shape register address
-    sbr     flags, ERESET           ; set envelope generator reload flag
+    sbr     flags, EG_RES           ; Set envelope generator reset flag
 
-    ; exit interrupt service routine -------------------------------------------
+    ; Exit interrupt service routine -------------------------------------------
 exit_isr:
     pop     ZL
     out     SREG, ZL
@@ -210,11 +210,142 @@ exit_isr:
     reti
 
 ; MAIN LOOP --------------------------------------------------------------------
+.macro tone_generator
+    ; AL must be 0x00
+    ; @0 is period register
+    ; @1 is counter
+    ; @2 is channel mask
+    lds     XL, @0 + 0              ; 1   Load tone period from SRAM
+    lds     XH, @0 + 1              ; 1   Tone period high byte
+    lds     YL, @1 + 0              ; 1   Load tone counter from SRAM
+    lds     YH, @1 + 1              ; 1   Tone counter high byte
+    cp      YL, XL                  ; 1   Compare counter against period
+    cpc     YH, XH                  ; 1
+    brlo    exit_tone               ; 1|2 Skip following if counter < period
+    sub     YL, XL                  ; 1   counter = counter - period
+    sbc     YH, XH                  ; 1
+    cp      YL, FDIV                ; 1   Compare counter against FDIV
+    cpc     YH, AL                  ; 1
+    brlo    toggle_flip_flop        ; 1|2 Skip following if counter < FDIV
+    clr     YL                      ; 1   Reset counter
+    clr     YH                      ; 1
+toggle_flip_flop:
+    ldi     AH, @2                  ; 1   Load tone mask
+    eor     flags, AH               ; 1   Toggle tone flip-flop
+    cp      XL, FDIV                ; 1   Compare period against FDIV
+    cpc     XH, AL                  ; 1
+    brsh    exit_tone               ; 1|2 Skip following if period >= FDIV
+    or      flags, AH               ; 1   Lock flip-flop in high state
+exit_tone:
+    add     YL, FDIV                ; 1   counter = counter + FDIV
+    adc     YH, AL                  ; 1
+    sts     @1 + 0, YL              ; 1   Save tone counter into SRAM
+    sts     @1 + 1, YH              ; 1   Tone counter high byte
+.endmacro                           ; 24  CPU cycles max
+
+.macro noise_envelope_generator
+    lds     XL, e_period  + 0       ; 1   Load envelope peiod from SRAM
+    lds     XH, e_period  + 1       ; 1   Envelope period high byte
+    lds     YL, e_counter + 0       ; 1   Load envelope counter from SRAM
+    lds     YH, e_counter + 1       ; 1   Envelope counter high byte
+    lds     BL, n_shifter + 0       ; 1   Load noise shifter from SRAM
+    lds     BH, n_shifter + 1       ; 1   Noise shifter high byte
+    lds     AL, n_period            ; 1   Load noise period from SRAM and double
+    lsl     AL                      ; 1   it to simulate noise prescaler
+    mov     AH, FDIV                ; 1   Iterate
+iteration_loop:
+    ; Update noise generator ------------------------------------------[ 17]----
+    ; TODO: shifting of the flags is bad idea!
+    cp      n_cnt, AL               ; 1   Compare counter against period
+    brlo    exit_noise              ; 1|2 Skip following if counter < period
+    clr     n_cnt                   ; 1   Reset counter
+    mov     ZL, BL                  ; 1   Compute the feedback based on
+    lsr     ZL                      ; 1   bit3 xor bit0 of the shifter
+    lsr     ZL                      ; 1
+    lsr     ZL                      ; 1
+    eor     ZL, BL                  ; 1
+    rol     flags                   ; 1   Shift 17-bit shifter, bit16 is located
+    ror     BH                      ; 1   in the bit7 of the flags regster
+    ror     BL                      ; 1
+    ror     ZL                      ; 1   Store feedback as bit16 of the shifter
+    ror     flags                   ; 1   in bit7 of the flags register
+    cbr     flags, 0b00111000       ; 1   Set noise output flags according to
+    sbrc    BL, bit0                ; 1|2 bit0 of the current shifter state
+    sbr     flags, 0b00111000       ; 1
+exit_noise:
+    inc     n_cnt                   ; 1   counter = counter + 1
+
+    ; Update envelope generator ------------------------------------------------
+    ; TODO
+
+    dec     AH                      ; 1   Decrement iteration counter and
+    brne    iteration_loop          ; 1|2 go to next interation
+    sts     n_shifter + 0, BL       ; 1   Save noise shifter into SRAM
+    sts     n_shifter + 1, BH       ; 1   Noise shifter high byte
+    sts     e_counter + 0, YL       ; 1   Save envelope counter into SRAM
+    sts     e_counter + 1, YH       ; 1   Envelope counter high byte
+.endmacro
+
+.macro sample_generator
+    ; AL is envelope sample
+    ; AH is mixer output
+    ; BL is amplitude table offset
+    ; @0 is volume register
+    ; @1 is channel bit
+    ; @2 is output sample
+    mov     @2, AL                  ; 1   Use envelope amplitude by default
+    lds     ZL, @0                  ; 1   volume+envelope flag from PSG register
+    bst     ZL, bit4                ; 1   Check if envelope enabled in this
+    brts    use_envelope            ; 1|2 channel and skip amplitude computation
+    add     ZL, BL                  ; 1   Get amplitude value from table using
+    ld      @2, Z                   ; 2   volume as index (0x00-0x0F)
+use_envelope:
+    sbrs    AH, @1                  ; 1|2 If channel disabled in mixer (N and T)
+    clr     @2                      ; 1   then set amplitude to zero value
+.endmacro                           ; 9   CPU cycles max
+
 loop:
-    in      AL, TIFR0               ; check timer0 overflow flag TOV0
-    sbrs    AL, TOV0                ; skip next instruction if TOV0 is set
-    rjmp    loop                    ; otherwise jump to the loop beginning
-    out     TIFR0, AL               ; clear timer overflow flag
+    ; Check for timer overflow --------------------------------------[   3 ]----
+    in      AL, TIFR0               ; 1   Check timer0 overflow flag TOV0
+    sbrs    AL, TOV0                ; 1|2 Skip next instruction if TOV0 is set
+    rjmp    loop                    ; 2   otherwise jump to the loop beginning
+    out     TIFR0, AL               ; 1   Clear timer overflow flag
+
+    ; Update tone generators ----------------------------------------[  73 ]----
+    clr     AL                      ; 1
+    tone_generator a_period, a_counter, 0b00000001 ; 24
+    tone_generator b_period, b_counter, 0b00000010 ; 24
+    tone_generator c_period, c_counter, 0b00000100 ; 24
+
+    ; Update noise and envelope generators --------------------------[   0 ]----
+    noise_envelope_generator
+
+    ; Apply enable flags from mixer ---------------------------------[   6 ]----
+    lds     AH, mixer               ; 1   Mixer: xxCB.Acba (CBA:Noise, cba:Tone)
+    or      AH, flags               ; 1   Apply disables:  xxCB.Acba | xxNN.Ncba
+    mov     AL, AH                  ; 1
+    lsl     AL                      ; 1   Shift left:      xxCB.Acba > xCBA.cbax
+    swap    AL                      ; 1   Swap nibbles:    xCBA.cbax > cbax.xCBA
+    and     AH, AL                  ; 1   Output:          xxxx.xcba & xxxx.xCBA
+
+    ; Compute envelope sample ---------------------------------------[   4 ]----
+    ldi     ZL, low(amplitude)      ; 1
+    add     ZL, e_stp               ; 1
+    ld      AL, Z                   ; 2
+
+    ; Compute sample for each channel -------------------------------[  28 ]----
+    ldi     BL, low(amplitude)      ; 1
+    sample_generator a_volume, bit0, XL ; 9
+    sample_generator b_volume, bit1, BH ; 9
+    sample_generator c_volume, bit2, XH ; 9
+
+    ; Outup samples to compare match registers ----------------------[   7 ]----
+    lsr     BH                      ; 1
+    add     XL, BH                  ; 1
+    add     XH, BH                  ; 1
+    out     OCR0AL, XL              ; 1
+    out     OCR0BL, XH              ; 1
+    rjmp    loop                    ; 2
 
 ;     ; update envelope generator and compute level ------------------------------
 ;     lds     AL, e_counter + 0       ; load counter from SRAM
@@ -385,9 +516,6 @@ loop:
 ;     add     BH, BL                  ; left = amplitudeA + 0.5 * amplitudeB
 ;     out     OCR0BL, BH              ; send result to PWM compare match
 
-    ; all work is done, so go to next loop -------------------------------------
-    rjmp loop
-
 ; ------------------------------------------------------------------------------
 ; SRAM
 ; ------------------------------------------------------------------------------
@@ -406,8 +534,8 @@ b_volume:   .byte 1
 c_volume:   .byte 1
 e_period:   .byte 2
 e_shape:    .byte 1
-cfg_0:      .byte 1
-cfg_1:      .byte 1
+config:     .byte 1
+unused:     .byte 1
 
 a_counter:  .byte 2
 b_counter:  .byte 2

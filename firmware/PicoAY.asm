@@ -7,6 +7,7 @@
     .equ    F_CPU = 8000000
     .equ    BAUD_RATE = 57600
     .equ    BIT_DURATION = (F_CPU / BAUD_RATE)
+    .equ    MAX_AMP = 170
 
     .def    FDIV    = r16           ;
     .def    raddr   = r17           ;
@@ -47,33 +48,6 @@
     ; b6 - envelope resolution: 0: 5-bit, 1: 4-bit
     ; b7 - stereo mode: 0: ABC, 1: ACB
 
-
-    ; .def    AL      = r16           ; general purpose register for emulation
-    ; .def    AH      = r17           ; general purpose register for emulation
-    ; .def    BL      = r18           ; general purpose register for emulation
-    ; .def    BH      = r19           ; general purpose register for emulation
-    ; .def    flags   = r20           ; register holding flags for emulation
-    ; .def    e_amp   = r21           ; register holding envelope out amplitude
-    ; .def    e_gen   = r22           ; register holding envelope generator flags
-    ; .def    e_stp   = r23           ; register holding envelope step counter
-    ; .def    n_xor   = r24           ;
-    ; .def    ZERO    = r25           ; register holding zero constant
-    ; .def    TAMP    = r26           ; register holding amplitude table offset
-    ; .def    TENV    = r27           ; register holding envelope table offset
-
-
-    ; .equ    DECR    = 0x07          ; TODO
-    ; .equ    ERESET  = bit7          ;
-    ; .equ    EATTACK = bit0          ;
-    ; .equ    EINVERT = bit1          ;
-    ; .equ    EHOLD   = bit2          ;
-    ; .equ    ESTOP   = bit7          ;
-    ; .equ    EENABLE = bit4          ;
-    ; .equ    NMASK   = 0b00111000    ;
-    ; .equ    ABIT    = bit0          ;
-    ; .equ    BBIT    = bit1          ;
-    ; .equ    CBIT    = bit2          ;
-
 ; ------------------------------------------------------------------------------
 ; FLASH
 ; ------------------------------------------------------------------------------
@@ -85,34 +59,84 @@
     .org    INT0addr
     rjmp    int0_isr                ; INT0  handler
 
-; Data arrays ------------------------------------------------------------------
-reg_mask:
-    .db     0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0x1F, 0xFF
+; DATA TABLES  -----------------------------------------------------------------
+reg_mask:   ; 16 bytes
+    .db     0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0x1F, 0x3F
     .db     0x1F, 0x1F, 0x1F, 0xFF, 0xFF, 0x0F, 0xFF, 0xFF
 
-amplitude:
-    .db     0x00, 0x03, 0x04, 0x05, 0x08, 0x0C, 0x10, 0x1B
-    .db     0x20, 0x34, 0x4B, 0x5F, 0x7E, 0xA2, 0xCD, 0xFF
+amp_4bit:   ; 16 bytes
+    .db     int(0.0 + MAX_AMP * 0.0056), int(0.5 + MAX_AMP * 0.0079)
+    .db     int(0.5 + MAX_AMP * 0.0112), int(0.5 + MAX_AMP * 0.0158)
+    .db     int(0.5 + MAX_AMP * 0.0224), int(0.5 + MAX_AMP * 0.0316)
+    .db     int(0.5 + MAX_AMP * 0.0447), int(0.5 + MAX_AMP * 0.0631)
+    .db     int(0.5 + MAX_AMP * 0.0891), int(0.5 + MAX_AMP * 0.1259)
+    .db     int(0.5 + MAX_AMP * 0.1778), int(0.5 + MAX_AMP * 0.2512)
+    .db     int(0.5 + MAX_AMP * 0.3548), int(0.5 + MAX_AMP * 0.5012)
+    .db     int(0.5 + MAX_AMP * 0.7079), int(0.5 + MAX_AMP * 1.0000)
 
-envelopes:
-    ; bit0 - attack
-    ; bit1 - invert on next cycle
-    ; bit2 - stop generator on next cycle
-    .db     0x07, 0x07, 0x07, 0x07, 0x04, 0x04, 0x04, 0x04
-    .db     0x01, 0x07, 0x03, 0x05, 0x00, 0x06, 0x02, 0x04
+amp_5bit:   ; 32 bytes
+    .db     int(0.0 + MAX_AMP * 0.0047), int(0.5 + MAX_AMP * 0.0056)
+    .db     int(0.5 + MAX_AMP * 0.0067), int(0.5 + MAX_AMP * 0.0079)
+    .db     int(0.5 + MAX_AMP * 0.0094), int(0.5 + MAX_AMP * 0.0112)
+    .db     int(0.5 + MAX_AMP * 0.0133), int(0.5 + MAX_AMP * 0.0158)
+    .db     int(0.5 + MAX_AMP * 0.0188), int(0.5 + MAX_AMP * 0.0224)
+    .db     int(0.5 + MAX_AMP * 0.0266), int(0.5 + MAX_AMP * 0.0316)
+    .db     int(0.5 + MAX_AMP * 0.0376), int(0.5 + MAX_AMP * 0.0447)
+    .db     int(0.5 + MAX_AMP * 0.0531), int(0.5 + MAX_AMP * 0.0631)
+    .db     int(0.5 + MAX_AMP * 0.0750), int(0.5 + MAX_AMP * 0.0891)
+    .db     int(0.5 + MAX_AMP * 0.1059), int(0.5 + MAX_AMP * 0.1259)
+    .db     int(0.5 + MAX_AMP * 0.1496), int(0.5 + MAX_AMP * 0.1778)
+    .db     int(0.5 + MAX_AMP * 0.2113), int(0.5 + MAX_AMP * 0.2512)
+    .db     int(0.5 + MAX_AMP * 0.2985), int(0.5 + MAX_AMP * 0.3548)
+    .db     int(0.5 + MAX_AMP * 0.4217), int(0.5 + MAX_AMP * 0.5012)
+    .db     int(0.5 + MAX_AMP * 0.5957), int(0.5 + MAX_AMP * 0.7079)
+    .db     int(0.5 + MAX_AMP * 0.8414), int(0.5 + MAX_AMP * 1.0000)
+
+envelopes:  ; 64 bytes
+    .equ    _inc =  1
+    .equ    _dec = -1
+    .equ    _hld =  0
+    .equ    _top = 0x1F
+    .equ    _bot = 0x00
+    .db     _dec, _top, _hld, _bot
+    .db     _dec, _top, _hld, _bot
+    .db     _dec, _top, _hld, _bot
+    .db     _dec, _top, _hld, _bot
+    .db     _inc, _bot, _hld, _bot
+    .db     _inc, _bot, _hld, _bot
+    .db     _inc, _bot, _hld, _bot
+    .db     _inc, _bot, _hld, _bot
+    .db     _dec, _top, _dec, _top
+    .db     _dec, _top, _hld, _bot
+    .db     _dec, _top, _inc, _bot
+    .db     _dec, _top, _hld, _top
+    .db     _inc, _bot, _inc, _bot
+    .db     _inc, _bot, _hld, _top
+    .db     _inc, _bot, _dec, _top
+    .db     _inc, _bot, _hld, _bot
 
 ; ENTRY POINT ------------------------------------------------------------------
 main:
+    ; Clear SRAM ---------------------------------------------------------------
+    ldi     AL, SRAM_SIZE           ;
+    ldi     AH, 0x00                ; Zero value used in initialization
+    ldi     ZL, SRAM_START          ;
+    mov     ZH, AH                  ;
+clear_loop:                         ;
+    st      Z+, AH                  ;
+    dec     AL                      ;
+    brne    clear_loop              ;
+
     ; Setup stack and access to FLASH ------------------------------------------
     ldi     AL, RAMEND
     out     SPL, AL
+    out     SPH, AH
     ldi     ZH, high(MAPPED_FLASH_START)
 
     ; Setup main clock to 8 MHz ------------------------------------------------
-    ldi     AL, 0x00
-    ldi     AH, 0xD8                ; Write correct signature to Configuration
-    out     CCP, AH                 ; Change Protection register and set clock
-    out     CLKPSR, AL              ; division factor to 1 for 8 MHz
+    ldi     AL, 0xD8                ; Write correct signature to Configuration
+    out     CCP, AL                 ; Change Protection register and set clock
+    out     CLKPSR, AH              ; division factor to 1 for 8 MHz
 
     ; Setup external interrupt INT0 --------------------------------------------
     cbi     DDRB,  PORTB2           ; Set PORTB2 as input
@@ -130,7 +154,8 @@ main:
     out     TCCR0B, AL              ; WGM02+CS00 bits set
 
     ; Setup everything else ----------------------------------------------------
-    ldi     FDIV, 0x07              ;
+    ldi     FDIV,  0x07             ;
+    ldi     flags, 0b11000111       ;
     sei                             ;
     rjmp    loop                    ;
 
@@ -182,7 +207,7 @@ bit_read_loop:
     rjmp    reg_data_received       ; incoming register address
     cpi     YH, 0xF0                ; Check if received byte is a valid
     brlo    reg_addr_received       ; register addres, otherwise try to sync
-    sbr     raddr, bit4             ; Set reg address beyond allowed value to
+    sbr     raddr, (1 << bit4)      ; Set reg address beyond allowed value to
     rjmp    exit_isr                ; indicate the waiting for allowed value
 reg_addr_received:
     mov     raddr, YH               ; Received data is a register address,
@@ -198,7 +223,7 @@ reg_data_received:
     st      Y, ZL
     cpi     raddr, 0x0D             ; Check if register address is an
     brne    exit_isr                ; envelope shape register address
-    sbr     flags, EG_RES           ; Set envelope generator reset flag
+    sbr     flags, (1 << EG_RES)    ; Set envelope generator reset flag
 
     ; Exit interrupt service routine -------------------------------------------
 exit_isr:
@@ -241,9 +266,10 @@ exit_tone:
     adc     YH, AL                  ; 1
     sts     @1 + 0, YL              ; 1   Save tone counter into SRAM
     sts     @1 + 1, YH              ; 1   Tone counter high byte
-.endmacro                           ; 24  CPU cycles max
+.endmacro                           ; MAX CYCLES: 24
 
 .macro noise_envelope_generator
+    ; Read state from SRAM and init loop ------------------------------[  9]----
     lds     XL, e_period  + 0       ; 1   Load envelope peiod from SRAM
     lds     XH, e_period  + 1       ; 1   Envelope period high byte
     lds     YL, e_counter + 0       ; 1   Load envelope counter from SRAM
@@ -252,39 +278,56 @@ exit_tone:
     lds     BH, n_shifter + 1       ; 1   Noise shifter high byte
     lds     AL, n_period            ; 1   Load noise period from SRAM and double
     lsl     AL                      ; 1   it to simulate noise prescaler
-    mov     AH, FDIV                ; 1   Iterate
+    mov     AH, FDIV                ; 1   Init update iterations
 iteration_loop:
-    ; Update noise generator ------------------------------------------[ 17]----
-    ; TODO: shifting of the flags is bad idea!
+
+    ; Update noise generator ------------------------------------------[ 16]----
     cp      n_cnt, AL               ; 1   Compare counter against period
     brlo    exit_noise              ; 1|2 Skip following if counter < period
     clr     n_cnt                   ; 1   Reset counter
-    mov     ZL, BL                  ; 1   Compute the feedback based on
-    lsr     ZL                      ; 1   bit3 xor bit0 of the shifter
-    lsr     ZL                      ; 1
-    lsr     ZL                      ; 1
+    bst     BL, bit3                ; 1   Compute the feedback based on
+    bld     ZL, bit0                ; 1   bit3 xor bit0 of the shifter
     eor     ZL, BL                  ; 1
-    rol     flags                   ; 1   Shift 17-bit shifter, bit16 is located
-    ror     BH                      ; 1   in the bit7 of the flags regster
-    ror     BL                      ; 1
-    ror     ZL                      ; 1   Store feedback as bit16 of the shifter
-    ror     flags                   ; 1   in bit7 of the flags register
+    ror     BH                      ; 1   Shift 17-bit shifter, bit16 is located
+    ror     BL                      ; 1   in the bit7 of the flags regster
+    bst     flags, NS_B16           ; 1
+    bld     BH, bit7                ; 1
+    bst     ZL, bit0                ; 1   Store feedback as bit16 of the shifter
+    bld     flags, NS_B16           ; 1   in bit7 of the flags register
     cbr     flags, 0b00111000       ; 1   Set noise output flags according to
     sbrc    BL, bit0                ; 1|2 bit0 of the current shifter state
     sbr     flags, 0b00111000       ; 1
 exit_noise:
     inc     n_cnt                   ; 1   counter = counter + 1
 
-    ; Update envelope generator ------------------------------------------------
-    ; TODO
+    ; Update envelope generator ---------------------------------------[ 20]----
+    cp      YL, XL                  ; 1   Compare counter against period
+    cpc     YH, XH                  ; 1
+    brlo    exit_envelope           ; 1|2 Skip following if counter < period
+    clr     YL                      ; 1   Reset counter
+    clr     YH                      ; 1
+    ldi     ZL, low(envelopes)      ; 1   Increment or decrement envelope step
+    add     ZL, e_gen               ; 1   counter depending on envelope genera-
+    ld      ZL, Z                   ; 2   tion config
+    add     e_stp, ZL               ; 1
+    cpi     e_stp, 0x20             ; 1   When envelope step reaches 0x20 after
+    brlo    exit_envelope           ; 1|2 increment or get 0xFF after decrement
+    ldi     ZL, 0b00000010          ; 1   then generation config switches to the
+    eor     e_gen, ZL               ; 1   alteravive phase and envelope step 
+    ldi     ZL, low(envelopes + 1)  ; 1   reloads with a new value from config
+    add     ZL, e_gen               ; 1
+    ld      e_stp, Z                ; 2
+exit_envelope:
+    ld      ZL, Y+                  ; 2   counter = counter + 1
 
+    ; Go to the next iteration or exit --------------------------------[  6]----
     dec     AH                      ; 1   Decrement iteration counter and
     brne    iteration_loop          ; 1|2 go to next interation
     sts     n_shifter + 0, BL       ; 1   Save noise shifter into SRAM
     sts     n_shifter + 1, BH       ; 1   Noise shifter high byte
     sts     e_counter + 0, YL       ; 1   Save envelope counter into SRAM
     sts     e_counter + 1, YH       ; 1   Envelope counter high byte
-.endmacro
+.endmacro                           ; MAX CYCLES: 9 + FDIV * (16 + 20) + 6 = 303
 
 .macro sample_generator
     ; AL is envelope sample
@@ -302,23 +345,37 @@ exit_noise:
 use_envelope:
     sbrs    AH, @1                  ; 1|2 If channel disabled in mixer (N and T)
     clr     @2                      ; 1   then set amplitude to zero value
-.endmacro                           ; 9   CPU cycles max
+.endmacro                           ; MAX CYCLES: 9
 
 loop:
-    ; Check for timer overflow --------------------------------------[   3 ]----
+    ; Check for timer overflow --------------------------------------[   5 ]----
     in      AL, TIFR0               ; 1   Check timer0 overflow flag TOV0
     sbrs    AL, TOV0                ; 1|2 Skip next instruction if TOV0 is set
     rjmp    loop                    ; 2   otherwise jump to the loop beginning
     out     TIFR0, AL               ; 1   Clear timer overflow flag
+    clr     AL                      ; 1   Clear temp register to use as zero
 
-    ; Update tone generators ----------------------------------------[  73 ]----
-    clr     AL                      ; 1
-    tone_generator a_period, a_counter, 0b00000001 ; 24
-    tone_generator b_period, b_counter, 0b00000010 ; 24
-    tone_generator c_period, c_counter, 0b00000100 ; 24
+    ; Reset envelope generator after shape change -------------------[  12 ]----
+    sbrs    flags, EG_RES           ; 1|2 Skip next instruction if no need to
+    rjmp    no_envelope_reset       ; 2   reset envelope generator
+    cbr     flags, (1 << EG_RES)    ; 1   Clear request for reset envelope
+    sts     e_counter + 0, AL       ; 1   Reset envelope counter
+    sts     e_counter + 1, AL       ; 1
+    lds     e_gen, e_shape          ; 1   Init envelope generator with a new
+    lsl     e_gen                   ; 1   shape, index in table is shape * 4
+    lsl     e_gen                   ; 1
+    ldi     ZL, low(envelopes + 1)  ; 1   Init envelope step with value from
+    add     ZL, e_gen               ; 1   envelope generator table
+    ld      e_stp, Z                ; 2
+no_envelope_reset:
 
-    ; Update noise and envelope generators --------------------------[   0 ]----
-    noise_envelope_generator
+    ; Update tone generators ----------------------------------------[  72 ]----
+    tone_generator a_period, a_counter, 0b00000001 ; max: 24
+    tone_generator b_period, b_counter, 0b00000010 ; max: 24
+    tone_generator c_period, c_counter, 0b00000100 ; max: 24
+
+    ; Update noise and envelope generators --------------------------[ 303 ]----
+    noise_envelope_generator        ; max: 303
 
     ; Apply enable flags from mixer ---------------------------------[   6 ]----
     lds     AH, mixer               ; 1   Mixer: xxCB.Acba (CBA:Noise, cba:Tone)
@@ -328,16 +385,14 @@ loop:
     swap    AL                      ; 1   Swap nibbles:    xCBA.cbax > cbax.xCBA
     and     AH, AL                  ; 1   Output:          xxxx.xcba & xxxx.xCBA
 
-    ; Compute envelope sample ---------------------------------------[   4 ]----
-    ldi     ZL, low(amplitude)      ; 1
+    ; Compute sample for each channel -------------------------------[  32 ]----
+    ldi     ZL, low(amp_5bit)       ; 1
     add     ZL, e_stp               ; 1
     ld      AL, Z                   ; 2
-
-    ; Compute sample for each channel -------------------------------[  28 ]----
-    ldi     BL, low(amplitude)      ; 1
-    sample_generator a_volume, bit0, XL ; 9
-    sample_generator b_volume, bit1, BH ; 9
-    sample_generator c_volume, bit2, XH ; 9
+    ldi     BL, low(amp_4bit)       ; 1
+    sample_generator a_volume, bit0, XL ; max: 9
+    sample_generator b_volume, bit1, BH ; max: 9
+    sample_generator c_volume, bit2, XH ; max: 9
 
     ; Outup samples to compare match registers ----------------------[   7 ]----
     lsr     BH                      ; 1
@@ -347,181 +402,15 @@ loop:
     out     OCR0BL, XH              ; 1
     rjmp    loop                    ; 2
 
-;     ; update envelope generator and compute level ------------------------------
-;     lds     AL, e_counter + 0       ; load counter from SRAM
-;     lds     AH, e_counter + 1       ;
-;     sbrs    flags, ERESET           ; if envelope shape is unchanged then skip
-;     rjmp    e_not_changed           ; envelope generator initialization
-;     cbr     flags, (1 << ERESET)    ; clear envelope shape changed flag
-;     lds     ZL, e_shape             ; initialize envelope genertor with shape
-;     add     ZL, TENV                ; get envelope generation code from table
-;     ld      e_gen, Z                ; using envelope shape as index (0x00-0x0F)
-;     ldi     e_stp, 0x1F             ; reload step counter with top value
-;     rjmp    e_reload                ; continue with period counter reload
-; e_not_changed:
-;     sbrc    e_gen, ESTOP            ; check if envelope geneator is stopped
-;     rjmp    e_no_reload             ;
-;     subi    AL, DECR                ; decrement by sampling constant
-;     sbc     AH, ZERO                ;
-;     brcs    e_next_step             ; if counter < 0 then go to next step
-;     brne    e_no_reload             ; if counter > 0 then skip reload section
-; e_next_step:
-;     dec     e_stp                   ; decrement step counter
-;     brpl    e_reload                ; if counter >= 0 then skip step reloading
-;     ldi     e_stp, 0x1F             ; reload step counter with top value
-;     ldi     BL, (1 << EATTACK)      ;
-;     sbrc    e_gen, EINVERT          ; if 'invert on next cycle' bit is active
-;     eor     e_gen, BL               ; then invert envelope 'attack' bit
-;     sbrc    e_gen, EHOLD            ; if 'stop on next cycle' bit is active
-;     sbr     e_gen, (1 << ESTOP)     ; then stop envelope generator
-; e_reload:
-;     lds     BL, e_period + 0        ; as counter <= 0 it reloads with
-;     lds     BH, e_period + 1        ; new period from PSG registers
-;     add     AL, BL                  ; add period to the counter to pre-save the
-;     adc     AH, BH                  ; sampling fraction left after substraction
-;     mov     ZL, e_stp               ;
-;     ldi     BL, 0x1F                ;
-;     sbrs    e_gen, EATTACK          ; invert envelope volume if 'attack' bit 
-;     eor     ZL, BL                  ; is not set in envelope generator
-;     lsr     ZL                      ; convert 5-bit volume to 4-bit one
-;     add     ZL, TAMP                ; get amplitude value from table using
-;     ld      e_amp, Z                ; envelope volume as index (0x00-0x0F)
-; e_no_reload:
-;     sts     e_counter + 0, AL       ; save counter back to SRAM
-;     sts     e_counter + 1, AH       ;
-
-;     ; update noise generator and toggle level ----------------------------------
-;     lds     AL, n_counter           ; load counter from SRAM
-;     subi    AL, DECR                ;
-;     breq    n_reload                ; if counter = 0 then go to reload section
-;     brpl    n_no_reload             ; if counter > 0 then skip reload section
-; n_reload:
-;     lds     BL, n_period            ; as counter <= 0 it reloads with new
-;     add     AL, BL                  ; period from PSG register
-;     lds     BL, n_shifter + 0       ; load shifter from SRAM
-;     lds     BH, n_shifter + 1       ;
-;     lsr     n_xor                   ;
-;     mov     n_xor, BL               ;
-;     ror     BH                      ; rotate 16-bit shifter
-;     ror     BL                      ;
-;     sbr     flags, NMASK            ; set noise level high
-;     sbrs    BL, bit0                ; check bit 0 of the shifter
-;     cbr     flags, NMASK            ; set noise level low
-;     lsl     n_xor                   ;
-;     eor     n_xor, BL               ;
-;     lsr     n_xor                   ;
-;     sts     n_shifter + 0, BL       ; save shifter back to SRAM
-;     sts     n_shifter + 1, BH       ;
-; n_no_reload:
-;     sts     n_counter, AL           ; save counter back to SRAM
-
-;     ; update tone A counter and toggle level -----------------------------------
-;     lds     AL, a_counter + 0       ; load counter from SRAM
-;     lds     AH, a_counter + 1       ; as 16-bit signed value
-;     subi    AL, DECR                ; decrement by sampling constant
-;     sbc     AH, ZERO                ;
-;     breq    a_reload                ; if counter = 0 then go to reload section
-;     brpl    a_no_reload             ; if counter > 0 then skip reload section
-; a_reload:
-;     lds     BL, a_period + 0        ; as counter <= 0 it reloads with
-;     lds     BH, a_period + 1        ; new period from PSG registers
-;     add     AL, BL                  ; add period to the counter to pre-save the
-;     adc     AH, BH                  ; sampling fraction left after substraction
-;     ldi     BL, (1 << ABIT)         ;
-;     eor     flags, BL               ; toggle tone level
-; a_no_reload:
-;     sts     a_counter + 0, AL       ; save counter back to SRAM
-;     sts     a_counter + 1, AH       ;
-
-;     ; update tone B counter and toggle level -----------------------------------
-;     lds     AL, b_counter + 0       ; load counter from SRAM
-;     lds     AH, b_counter + 1       ; as 16-bit signed value
-;     subi    AL, DECR                ; decrement by sampling constant
-;     sbc     AH, ZERO                ;
-;     breq    b_reload                ; if counter = 0 then go to reload section
-;     brpl    b_no_reload             ; if counter > 0 then skip reload section
-; b_reload:
-;     lds     BL, b_period + 0        ; as counter <= 0 it reloads with
-;     lds     BH, b_period + 1        ; new period from PSG registers
-;     add     AL, BL                  ; add period to the counter to pre-save the
-;     adc     AH, BH                  ; sampling fraction left after substraction
-;     ldi     BL, (1 << BBIT)         ;
-;     eor     flags, BL               ; toggle tone level
-; b_no_reload:
-;     sts     b_counter + 0, AL       ; save counter back to SRAM
-;     sts     b_counter + 1, AH       ;
-
-;     ; update tone C counter and toggle level -----------------------------------
-;     lds     AL, c_counter + 0       ; load counter from SRAM
-;     lds     AH, c_counter + 1       ; as 16-bit signed value
-;     subi    AL, DECR                ; decrement by sampling constant
-;     sbc     AH, ZERO                ;
-;     breq    c_reload                ; if counter = 0 then go to reload section
-;     brpl    c_no_reload             ; if counter > 0 then skip reload section
-; c_reload:
-;     lds     BL, c_period + 0        ; as counter <= 0 it reloads with
-;     lds     BH, c_period + 1        ; new period from PSG registers
-;     add     AL, BL                  ; add period to the counter to pre-save the
-;     adc     AH, BH                  ; sampling fraction left after substraction
-;     ldi     BL, (1 << CBIT)         ;
-;     eor     flags, BL               ; toggle tone level
-; c_no_reload:
-;     sts     c_counter + 0, AL       ; save counter back to SRAM
-;     sts     c_counter + 1, AH       ;
-
-;     ; apply enable flags from mixer --------------------------------------------
-;     ; output = (MixerN | LevelN) & (MixerT | LevelT)
-;     lds     AH, mixer               ; mixer: xxCBAcba where CBA:Noise, cba:Tone
-;     or      AH, flags               ; apply disable mask: xxCBAcba | xxNNNcba
-;     mov     AL, AH                  ;
-;     lsl     AL                      ; shift left:   xxCB|Acba -> xCBA|cbax
-;     swap    AL                      ; swap nibbles: xCBA|cbax -> cbax|xCBA
-;     and     AH, AL                  ; output: xxxx|xcba & xxxx|
-
-;     ; compute channel B amplitude ----------------------------------------------
-;     lds     ZL, b_volume            ; volume and envelope flag from PSG register
-;     mov     BL, e_amp               ; use envelope amplitude by default
-;     bst     ZL, EENABLE             ; check if envelope enabled in this
-;     brts    b_with_envelope         ; channel and skip amplitude computation
-;     add     ZL, TAMP                ; get amplitude value from table using
-;     ld      BL, Z                   ; volume as index (0x00-0x0F)
-; b_with_envelope:
-;     sbrs    AH, BBIT                ; if channel disabled in mixer (N and T)
-;     clr     BL                      ; then set amplitude to zero value
-;     lsr     BL                      ; channel B is at half amplitude
-
-;     ; compute channel A amplitude ----------------------------------------------
-;     lds     ZL, a_volume            ; volume and envelope flag from PSG register
-;     mov     BH, e_amp               ; use envelope amplitude by default
-;     bst     ZL, EENABLE             ; check if envelope enabled in this
-;     brts    a_with_envelope         ; channel and skip amplitude computation
-;     add     ZL, TAMP                ; get amplitude value from table using
-;     ld      BH, Z                   ; volume as index (0x00-0x0F)
-; a_with_envelope:
-;     sbrs    AH, ABIT                ; if channel disabled in mixer (N and T)
-;     clr     BH                      ; then set amplitude to zero value
-;     add     BH, BL                  ; left = amplitudeA + 0.5 * amplitudeB
-;     out     OCR0AL, BH              ; send result to PWM compare match
-
-;     ; compute channel C amplitude ----------------------------------------------
-;     lds     ZL, c_volume            ; volume and envelope flag from PSG register
-;     mov     BH, e_amp               ; use envelope amplitude by default
-;     bst     ZL, EENABLE             ; check if envelope enabled in this
-;     brts    c_with_envelope         ; channel and skip amplitude computation
-;     add     ZL, TAMP                ; get amplitude value from table using
-;     ld      BH, Z                   ; volume as index (0x00-0x0F)
-; c_with_envelope:
-;     sbrs    AH, CBIT                ; if channel disabled in mixer (N and T)
-;     clr     BH                      ; then set amplitude to zero value
-;     add     BH, BL                  ; left = amplitudeA + 0.5 * amplitudeB
-;     out     OCR0BL, BH              ; send result to PWM compare match
+    ; MAX CYCLES: 5 + 12 + 72 + 303 + 6 + 32 + 7 = 437
+    ; AVG CYCLES: 437 / 2 = 218
 
 ; ------------------------------------------------------------------------------
 ; SRAM
 ; ------------------------------------------------------------------------------
 
     .dseg
-    .org SRAM_START ; 0x0040 for ATtiny10
+    .org    SRAM_START ; 0x0040 for ATtiny10
 
 psg_regs:
 a_period:   .byte 2

@@ -4,7 +4,7 @@
 ; DEFINES
 ; ------------------------------------------------------------------------------
 
-    .equ    F_CPU = 8000000
+    .equ    F_CPU = (30420 * 256)   ;8000000
     .equ    BAUD_RATE = 57600
     .equ    BIT_DURATION = (F_CPU / BAUD_RATE)
     .equ    MAX_AMP = 170
@@ -139,11 +139,13 @@ clear_loop:                         ;
     out     CLKPSR, AH              ; division factor to 1 for 8 MHz
 
     ; Setup external interrupt INT0 --------------------------------------------
+#if 1
     cbi     DDRB,  PORTB2           ; Set PORTB2 as input
     sbi     PUEB,  PUEB2            ; Enable pull-up resistor on PORTB2
     cbi     EICRA, ISC00            ; Falling edge of INT0 generates an
     sbi     EICRA, ISC01            ; interrupt request
     sbi     EIMSK, INT0             ; Allow INT0 ISR execution
+#endif
 
     ; Setup Timer0 for Fast PWM 8-bit with 0xFF top ----------------------------
     sbi     DDRB, PORTB0            ; Set PORTB0 and PORTB1 as output
@@ -157,6 +159,32 @@ clear_loop:                         ;
     ldi     FDIV,  0x07             ;
     ldi     flags, 0b11000111       ;
     sei                             ;
+#if 0
+    ldi     AL, 0b00111101
+    sts     mixer, AL
+
+    ldi     AL, 0x0F
+    sts     a_volume, AL
+    sts     c_volume, AL
+
+    ldi     AL, 0x10
+    sts     b_volume, AL
+
+    ldi     AL, 0x01
+    sts     a_period + 1, AL
+
+    ldi     AL, 0x02
+    sts     c_period + 1, AL
+
+    ldi     AL, 0x10
+    sts     b_period + 1, AL
+
+    ldi     AL, 0x10
+    sts     e_period + 0, AL
+
+    ldi     AL, 0x0A
+    sts     e_shape, AL
+#endif
     rjmp    loop                    ;
 
 ; UART PROTOCOL ----------------------------------------------------------------
@@ -213,7 +241,7 @@ reg_addr_received:
     mov     raddr, YH               ; Received data is a register address,
     rjmp    exit_isr                ; so save it and exit
 reg_data_received:
-    ldi     ZL, low(reg_mask)       ; Read register mask from FLASH for
+    ldi     ZL, low(2*reg_mask)     ; Read register mask from FLASH for
     add     ZL, raddr               ; current register address
     ld      ZL, Z
     and     ZL, YH                  ; Apply mask for received register data
@@ -306,7 +334,7 @@ exit_noise:
     brlo    exit_envelope           ; 1|2 Skip following if counter < period
     clr     YL                      ; 1   Reset counter
     clr     YH                      ; 1
-    ldi     ZL, low(envelopes)      ; 1   Increment or decrement envelope step
+    ldi     ZL, low(2*envelopes)    ; 1   Increment or decrement envelope step
     add     ZL, e_gen               ; 1   counter depending on envelope genera-
     ld      ZL, Z                   ; 2   tion config
     add     e_stp, ZL               ; 1
@@ -314,7 +342,7 @@ exit_noise:
     brlo    exit_envelope           ; 1|2 increment or get 0xFF after decrement
     ldi     ZL, 0b00000010          ; 1   then generation config switches to the
     eor     e_gen, ZL               ; 1   alteravive phase and envelope step 
-    ldi     ZL, low(envelopes + 1)  ; 1   reloads with a new value from config
+    ldi     ZL, low(2*envelopes+1)  ; 1   reloads with a new value from config
     add     ZL, e_gen               ; 1
     ld      e_stp, Z                ; 2
 exit_envelope:
@@ -364,7 +392,7 @@ loop:
     lds     e_gen, e_shape          ; 1   Init envelope generator with a new
     lsl     e_gen                   ; 1   shape, index in table is shape * 4
     lsl     e_gen                   ; 1
-    ldi     ZL, low(envelopes + 1)  ; 1   Init envelope step with value from
+    ldi     ZL, low(2*envelopes+1)  ; 1   Init envelope step with value from
     add     ZL, e_gen               ; 1   envelope generator table
     ld      e_stp, Z                ; 2
 no_envelope_reset:
@@ -386,10 +414,10 @@ no_envelope_reset:
     and     AH, AL                  ; 1   Output:          xxxx.xcba & xxxx.xCBA
 
     ; Compute sample for each channel -------------------------------[  32 ]----
-    ldi     ZL, low(amp_5bit)       ; 1
+    ldi     ZL, low(2*amp_5bit)     ; 1
     add     ZL, e_stp               ; 1
     ld      AL, Z                   ; 2
-    ldi     BL, low(amp_4bit)       ; 1
+    ldi     BL, low(2*amp_4bit)     ; 1
     sample_generator a_volume, bit0, XL ; max: 9
     sample_generator b_volume, bit1, BH ; max: 9
     sample_generator c_volume, bit2, XH ; max: 9

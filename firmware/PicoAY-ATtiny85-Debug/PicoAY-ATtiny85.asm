@@ -1,10 +1,10 @@
 ;                                                                              ;
 ;                                   ATtiny85                                   ;
 ;                                  +--------+                                  ;
-;                   (/RESET) PB5 --|*1    6 |-- VCC                            ;
-;                            PB3 --| 2    5 |-- PB2 (UART_RX)                  ;
-;                            PB4 --| 3    4 |-- PB1 (PWM_OUT_R)                ;
-;                            GND --| 3    4 |-- PB0 (PWM_OUT_L)                ;
+;                   (/RESET) PB5 --|*1    8 |-- VCC                            ;
+;                            PB3 --| 2    7 |-- PB2 (UART_RX)                  ;
+;                            PB4 --| 3    6 |-- PB1 (PWM_OUT_R)                ;
+;                            GND --| 4    5 |-- PB0 (PWM_OUT_L)                ;
 ;                                  +--------+                                  ;
 ;                                                                              ;
 

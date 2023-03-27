@@ -11,10 +11,15 @@
 ; DEFINES
 ; ------------------------------------------------------------------------------
 
-    .equ    F_CPU = (30420 * 256)   ;8000000
-    .equ    BAUD_RATE = 57600
+    .equ    F_CPU        = 8000000
+    .equ    BAUD_RATE    = 57600
+    .equ    MAX_AMP      = 170
+
+    .equ    SAMPLE_RATE  = (F_CPU / 256)
+    .equ    F1_00_FDIV   = (1000000 / 8 / SAMPLE_RATE)
+    .equ    F1_75_FDIV   = (1750000 / 8 / SAMPLE_RATE)
+    .equ    F2_00_FDIV   = (2000000 / 8 / SAMPLE_RATE)
     .equ    BIT_DURATION = (F_CPU / BAUD_RATE)
-    .equ    MAX_AMP = 170
 
     .def    FDIV    = r16           ;
     .def    raddr   = r17           ;
@@ -33,17 +38,17 @@
 ;   .def    ZL      = r30           ;
 ;   .def    ZH      = r31           ;
 
-    .equ    bit0 = 0
-    .equ    bit1 = 1
-    .equ    bit2 = 2
-    .equ    bit3 = 3
-    .equ    bit4 = 4
-    .equ    bit5 = 5
-    .equ    bit6 = 6
-    .equ    bit7 = 7
+    .equ    bit0    = 0
+    .equ    bit1    = 1
+    .equ    bit2    = 2
+    .equ    bit3    = 3
+    .equ    bit4    = 4
+    .equ    bit5    = 5
+    .equ    bit6    = 6
+    .equ    bit7    = 7
 
-    .equ    NS_B16 = bit7
-    .equ    EG_RES = bit6
+    .equ    NS_B16  = bit7
+    .equ    EG_RES  = bit6
 
     ; config 0 bits:
     ; b0 - disable channel A
@@ -54,6 +59,8 @@
     ; b5 - 0: custom 1.00 MHz PSG clock, 1: custom 2.00 MHz clock
     ; b6 - envelope resolution: 0: 5-bit, 1: 4-bit
     ; b7 - stereo mode: 0: ABC, 1: ACB
+
+    #define B(bit) (1 << bit)
 
 ; ------------------------------------------------------------------------------
 ; FLASH
@@ -125,7 +132,7 @@ envelopes:  ; 64 bytes
 ; ENTRY POINT ------------------------------------------------------------------
 main:
     ; Clear SRAM ---------------------------------------------------------------
-    ldi     AL, SRAM_SIZE           ;
+    ldi     AL, 0x20                ;
     ldi     AH, 0x00                ; Zero value used in initialization
     ldi     ZL, SRAM_START          ;
     mov     ZH, AH                  ;
@@ -135,9 +142,10 @@ clear_loop:                         ;
     brne    clear_loop              ;
 
     ; Setup stack and access to FLASH ------------------------------------------
-    ldi     AL, RAMEND
-    out     SPL, AL
-    out     SPH, AH
+    ldi     AL, low(RAMEND)         ;
+    out     SPL, AL                 ;
+    ldi     AL, high(RAMEND)        ;
+    out     SPH, AL                 ;
     ldi     ZH, high(MAPPED_FLASH_START)
 
     ; Setup main clock to 8 MHz ------------------------------------------------
@@ -157,13 +165,13 @@ clear_loop:                         ;
     ; Setup Timer0 for Fast PWM 8-bit with 0xFF top ----------------------------
     sbi     DDRB, PORTB0            ; Set PORTB0 and PORTB1 as output
     sbi     DDRB, PORTB1            ; for Fast PWM (OC0A and OC0B)
-    ldi     AL, 0b10100001          ; Clear OC0A/OC0B on compare match
-    out     TCCR0A, AL              ; COM0A1+COM0B1+WGM00 bits set
-    ldi     AL, 0b00001001          ; Fast PWM with no prescaling
-    out     TCCR0B, AL              ; WGM02+CS00 bits set
+    ldi     AL, B(WGM00) | B(COM0A1) | B(COM0B1)
+    out     TCCR0A, AL              ; Clear OC0A/OC0B on compare match
+    ldi     AL, B(WGM02) | B(CS00)        
+    out     TCCR0B, AL              ; Fast PWM with no prescaling
 
     ; Setup everything else ----------------------------------------------------
-    ldi     FDIV,  0x07             ;
+    ldi     FDIV,  F1_75_FDIV       ;
     ldi     flags, 0b11000111       ;
     sei                             ;
 #if 0
@@ -242,7 +250,7 @@ bit_read_loop:
     rjmp    reg_data_received       ; incoming register address
     cpi     YH, 0xF0                ; Check if received byte is a valid
     brlo    reg_addr_received       ; register addres, otherwise try to sync
-    sbr     raddr, (1 << bit4)      ; Set reg address beyond allowed value to
+    sbr     raddr, B(bit4)          ; Set reg address beyond allowed value to
     rjmp    exit_isr                ; indicate the waiting for allowed value
 reg_addr_received:
     mov     raddr, YH               ; Received data is a register address,
@@ -258,7 +266,7 @@ reg_data_received:
     st      Y, ZL
     cpi     raddr, 0x0D             ; Check if register address is an
     brne    exit_isr                ; envelope shape register address
-    sbr     flags, (1 << EG_RES)    ; Set envelope generator reset flag
+    sbr     flags, B(EG_RES)        ; Set envelope generator reset flag
 
     ; Exit interrupt service routine -------------------------------------------
 exit_isr:
@@ -393,7 +401,7 @@ loop:
     ; Reset envelope generator after shape change -------------------[  12 ]----
     sbrs    flags, EG_RES           ; 1|2 Skip next instruction if no need to
     rjmp    no_envelope_reset       ; 2   reset envelope generator
-    cbr     flags, (1 << EG_RES)    ; 1   Clear request for reset envelope
+    cbr     flags, B(EG_RES)        ; 1   Clear request for reset envelope
     sts     e_counter + 0, AL       ; 1   Reset envelope counter
     sts     e_counter + 1, AL       ; 1
     lds     e_gen, e_shape          ; 1   Init envelope generator with a new
@@ -445,7 +453,7 @@ no_envelope_reset:
 ; ------------------------------------------------------------------------------
 
     .dseg
-    .org    SRAM_START ; 0x0040 for ATtiny10
+    .org    SRAM_START
 
 psg_regs:
 a_period:   .byte 2

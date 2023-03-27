@@ -1,6 +1,6 @@
 firmware/.vs
-firmware/Debug
-firmware/Release
+firmware/PicoAY-ATtiny85-Debug/Debug
+firmware/PicoAY-ATtiny10-Release/Release
 
 software/prototype/prj/.vs
 software/prototype/prj/Debug

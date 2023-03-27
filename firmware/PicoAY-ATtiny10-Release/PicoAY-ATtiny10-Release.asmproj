@@ -4,18 +4,18 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectVersion>7.0</ProjectVersion>
     <ToolchainName>com.Atmel.AVRAssembler</ToolchainName>
-    <ProjectGuid>59B1D629-9DCC-43ed-A0FD-8AB0E4D622AB</ProjectGuid>
+    <ProjectGuid>{758b6800-6212-4a6d-bd48-4f42e16ec78f}</ProjectGuid>
     <avrdeviceseries>none</avrdeviceseries>
     <avrdevice>ATtiny10</avrdevice>
     <OutputFileName>$(MSBuildProjectName)</OutputFileName>
     <OutputFileExtension>.obj</OutputFileExtension>
     <OutputDirectory>$(MSBuildProjectDirectory)\$(Configuration)</OutputDirectory>
     <Language>ASSEMBLY</Language>
-    <AssemblyName>firmware</AssemblyName>
-    <Name>PicoAY</Name>
-    <RootNamespace>firmware</RootNamespace>
+    <AssemblyName>ATtiny10-Release</AssemblyName>
+    <Name>PicoAY-ATtiny10-Release</Name>
+    <RootNamespace>ATtiny10-Release</RootNamespace>
     <ToolchainFlavour>Native</ToolchainFlavour>
-    <EntryFile>$(MSBuildProjectDirectory)\PicoAY.asm</EntryFile>
+    <EntryFile>$(MSBuildProjectDirectory)\PicoAY-ATtiny10.asm</EntryFile>
     <KeepTimersRunning>true</KeepTimersRunning>
     <OverrideVtor>false</OverrideVtor>
     <CacheFlash>true</CacheFlash>
@@ -28,31 +28,6 @@
     <ResetRule>0</ResetRule>
     <eraseonlaunchrule>0</eraseonlaunchrule>
     <EraseKey />
-    <avrtool>com.atmel.avrdbg.tool.simulator</avrtool>
-    <avrtoolserialnumber />
-    <avrdeviceexpectedsignature>0x1E9003</avrdeviceexpectedsignature>
-    <com_atmel_avrdbg_tool_simulator>
-      <ToolOptions xmlns="">
-        <InterfaceProperties>
-        </InterfaceProperties>
-      </ToolOptions>
-      <ToolType xmlns="">com.atmel.avrdbg.tool.simulator</ToolType>
-      <ToolNumber xmlns="">
-      </ToolNumber>
-      <ToolName xmlns="">Simulator</ToolName>
-    </com_atmel_avrdbg_tool_simulator>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <ToolchainSettings>
-      <AvrAssembler>
-        <avrasm.assembler.general.AdditionalIncludeDirectories>
-          <ListValues>
-            <Value>%24(PackRepoDir)\atmel\ATtiny_DFP\1.10.348\avrasm\inc</Value>
-          </ListValues>
-        </avrasm.assembler.general.AdditionalIncludeDirectories>
-        <avrasm.assembler.general.IncludeFile>tn10def.inc</avrasm.assembler.general.IncludeFile>
-      </AvrAssembler>
-    </ToolchainSettings>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <ToolchainSettings>
@@ -62,13 +37,13 @@
       <Value>%24(PackRepoDir)\atmel\ATtiny_DFP\1.10.348\avrasm\inc</Value>
     </ListValues>
   </avrasm.assembler.general.AdditionalIncludeDirectories>
-  <avrasm.assembler.general.IncludeFile />
+  <avrasm.assembler.general.IncludeFile>tn10def.inc</avrasm.assembler.general.IncludeFile>
 </AvrAssembler>
     </ToolchainSettings>
     <OutputType>Executable</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="PicoAY.asm">
+    <Compile Include="PicoAY-ATtiny10.asm">
       <SubType>Code</SubType>
     </Compile>
   </ItemGroup>

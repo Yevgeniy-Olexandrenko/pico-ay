@@ -1,0 +1,51 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" ToolsVersion="14.0">
+  <PropertyGroup>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectVersion>7.0</ProjectVersion>
+    <ToolchainName>com.Atmel.AVRAssembler</ToolchainName>
+    <ProjectGuid>{8d296107-e2ab-4c8a-81e9-2236f5010f03}</ProjectGuid>
+    <avrdeviceseries>none</avrdeviceseries>
+    <avrdevice>ATtiny85</avrdevice>
+    <OutputFileName>$(MSBuildProjectName)</OutputFileName>
+    <OutputFileExtension>.obj</OutputFileExtension>
+    <OutputDirectory>$(MSBuildProjectDirectory)\$(Configuration)</OutputDirectory>
+    <Language>ASSEMBLY</Language>
+    <AssemblyName>ATtiny85-Debug</AssemblyName>
+    <Name>PicoAY-ATtiny85-Debug</Name>
+    <RootNamespace>ATtiny85-Debug</RootNamespace>
+    <ToolchainFlavour>Native</ToolchainFlavour>
+    <EntryFile>$(MSBuildProjectDirectory)\PicoAY-ATtiny85.asm</EntryFile>
+    <KeepTimersRunning>true</KeepTimersRunning>
+    <OverrideVtor>false</OverrideVtor>
+    <CacheFlash>true</CacheFlash>
+    <ProgFlashFromRam>true</ProgFlashFromRam>
+    <RamSnippetAddress>0x20000000</RamSnippetAddress>
+    <UncachedRange />
+    <preserveEEPROM>true</preserveEEPROM>
+    <OverrideVtorValue>exception_table</OverrideVtorValue>
+    <BootSegment>2</BootSegment>
+    <ResetRule>0</ResetRule>
+    <eraseonlaunchrule>0</eraseonlaunchrule>
+    <EraseKey />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <ToolchainSettings>
+      <AvrAssembler>
+        <avrasm.assembler.general.AdditionalIncludeDirectories>
+          <ListValues>
+            <Value>%24(PackRepoDir)\atmel\ATtiny_DFP\1.10.348\avrasm\inc</Value>
+          </ListValues>
+        </avrasm.assembler.general.AdditionalIncludeDirectories>
+        <avrasm.assembler.general.IncludeFile>tn85def.inc</avrasm.assembler.general.IncludeFile>
+      </AvrAssembler>
+    </ToolchainSettings>
+    <OutputType>Executable</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="PicoAY-ATtiny85.asm">
+      <SubType>Code</SubType>
+    </Compile>
+  </ItemGroup>
+  <Import Project="$(AVRSTUDIO_EXE_PATH)\\Vs\\Assembler.targets" />
+</Project>

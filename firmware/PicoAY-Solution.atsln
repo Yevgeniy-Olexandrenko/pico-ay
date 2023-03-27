@@ -1,0 +1,23 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Atmel Studio Solution File, Format Version 11.00
+VisualStudioVersion = 14.0.23107.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{18226A42-8477-4023-8AD2-40C49DA407C9}") = "PicoAY-ATtiny85-Debug", "PicoAY-ATtiny85-Debug\PicoAY-ATtiny85-Debug.asmproj", "{8D296107-E2AB-4C8A-81E9-2236F5010F03}"
+EndProject
+Project("{18226A42-8477-4023-8AD2-40C49DA407C9}") = "PicoAY-ATtiny10-Release", "PicoAY-ATtiny10-Release\PicoAY-ATtiny10-Release.asmproj", "{758B6800-6212-4A6D-BD48-4F42E16EC78F}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Build|AVR = Build|AVR
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8D296107-E2AB-4C8A-81E9-2236F5010F03}.Build|AVR.ActiveCfg = Debug|AVR
+		{8D296107-E2AB-4C8A-81E9-2236F5010F03}.Build|AVR.Build.0 = Debug|AVR
+		{758B6800-6212-4A6D-BD48-4F42E16EC78F}.Build|AVR.ActiveCfg = Release|AVR
+		{758B6800-6212-4A6D-BD48-4F42E16EC78F}.Build|AVR.Build.0 = Release|AVR
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -20,7 +20,7 @@
     .equ    F1_75_FDIV   = (1750000 / 8 / SAMPLE_RATE)
     .equ    F2_00_FDIV   = (2000000 / 8 / SAMPLE_RATE)
 
-    .def    FDIV    = r16           ;
+    .def    fdiv    = r16           ;
     .def    raddr   = r17           ;
     .def    flags   = r18           ; 
     .def    n_cnt   = r19           ;
@@ -46,8 +46,13 @@
     .equ    bit6    = 6
     .equ    bit7    = 7
 
-    .equ    NS_B16  = bit7
-    .equ    EG_RES  = bit6
+    .equ    chA     = bit0
+    .equ    chB     = bit1
+    .equ    chC     = bit2
+
+    .equ    NS_B16  = bit7          ; Noise shifter bit16
+    .equ    EG_RES  = bit6          ; Envelope generator reset
+    .equ    WF_REG  = bit4          ; Waiting for register address
 
     ; config 0 bits:
     ; b0 - disable channel A
@@ -59,7 +64,10 @@
     ; b6 - envelope resolution: 0: 5-bit, 1: 4-bit
     ; b7 - stereo mode: 0: ABC, 1: ACB
 
-    #define B(bit) (1 << bit)
+    #define M(bit)  (1 << bit)
+    #define L(addr) (addr + 0)
+    #define H(addr) (addr + 1)
+    #define P(addr) (2 * addr)
 
 ; ------------------------------------------------------------------------------
 ; FLASH
@@ -153,28 +161,26 @@ clear_loop:                         ;
     out     CLKPSR, AH              ; division factor to 1 for 8 MHz
 
     ; Setup external interrupt INT0 --------------------------------------------
-#if 1
     cbi     DDRB,  PORTB2           ; Set PORTB2 as input
     sbi     PUEB,  PUEB2            ; Enable pull-up resistor on PORTB2
     cbi     EICRA, ISC00            ; Falling edge of INT0 generates an
     sbi     EICRA, ISC01            ; interrupt request
     sbi     EIMSK, INT0             ; Allow INT0 ISR execution
-#endif
 
     ; Setup Timer0 for Fast PWM 8-bit with 0xFF top ----------------------------
     sbi     DDRB, PORTB0            ; Set PORTB0 and PORTB1 as output
     sbi     DDRB, PORTB1            ; for Fast PWM (OC0A and OC0B)
-    ldi     AL, B(WGM00) | B(COM0A1) | B(COM0B1)
+    ldi     AL, M(WGM00) | M(COM0A1) | M(COM0B1)
     out     TCCR0A, AL              ; Clear OC0A/OC0B on compare match
-    ldi     AL, B(WGM02) | B(CS00)        
+    ldi     AL, M(WGM02) | M(CS00)        
     out     TCCR0B, AL              ; Fast PWM with no prescaling
 
     ; Setup everything else ----------------------------------------------------
-    ldi     FDIV,  F1_75_FDIV       ;
-    ldi     flags, 0b11000111       ;
-    sbr     raddr, B(bit4)          ;
-    sei                             ;
-    rjmp    loop                    ;
+    ldi     fdiv,  F1_75_FDIV
+    ldi     flags, M(NS_B16) | M(EG_RES)
+    sbr     raddr, M(WF_REG)
+    sei                             ; Enable interrupts
+    rjmp    loop                    ; Go to main loop
 
 ; UART PROTOCOL ----------------------------------------------------------------
     .equ    BIT_DURATION = (F_CPU / BAUD_RATE)
@@ -207,7 +213,7 @@ stop_bit_loop:
     brne    stop_bit_loop           ; 1|2 Go to next iteration
 
     ; Handle received byte according to the protocol ---------------------------
-    sbrs    raddr, bit4             ;     Skip next instruction if waiting for 
+    sbrs    raddr, WF_REG           ;     Skip next instruction if waiting for 
     rjmp    reg_data_received       ;     incoming register address
     cpi     YH, 0x10                ;     Check if received byte is a valid
     brsh    reg_addr_exit           ;     register addres, otherwise try to sync
@@ -215,7 +221,7 @@ stop_bit_loop:
     rjmp    reg_addr_exit           ;     so save it and exit
 reg_data_received:
     push    ZL                      ;     We need one more register for indexing
-    ldi     ZL, low(2*reg_mask)     ;     Read register mask from FLASH for
+    ldi     ZL, low(P(reg_mask))    ;     Read register mask from FLASH for
     add     ZL, raddr               ;     current register address
     ld      ZL, Z
     and     ZL, YH                  ;     Apply mask for received register data
@@ -226,9 +232,9 @@ reg_data_received:
     pop     ZL                      ;     Restore register from stack
     cpi     raddr, 0x0D             ;     Check if register address is an
     brne    reg_data_exit           ;     envelope shape register address
-    sbr     flags, B(EG_RES)        ;     Set envelope generator reset flag
+    sbr     flags, M(EG_RES)        ;     Set envelope generator reset flag
 reg_data_exit:
-    sbr     raddr, B(bit4)          ;     Wait for next byte as register address
+    sbr     raddr, M(WF_REG)        ;     Wait for next byte as register address
 reg_addr_exit:
 
     ; Exit interrupt service routine -------------------------------------------
@@ -244,45 +250,45 @@ reg_addr_exit:
     ; @0 is period register
     ; @1 is counter
     ; @2 is channel mask
-    lds     XL, @0 + 0              ; 1   Load tone period from SRAM
-    lds     XH, @0 + 1              ; 1   Tone period high byte
-    lds     YL, @1 + 0              ; 1   Load tone counter from SRAM
-    lds     YH, @1 + 1              ; 1   Tone counter high byte
+    lds     XL, L(@0)               ; 1   Load tone period from SRAM
+    lds     XH, H(@0)               ; 1   Tone period high byte
+    lds     YL, L(@1)               ; 1   Load tone counter from SRAM
+    lds     YH, H(@1)               ; 1   Tone counter high byte
     cp      YL, XL                  ; 1   Compare counter against period
     cpc     YH, XH                  ; 1
     brlo    exit_tone               ; 1|2 Skip following if counter < period
     sub     YL, XL                  ; 1   counter = counter - period
     sbc     YH, XH                  ; 1
-    cp      YL, FDIV                ; 1   Compare counter against FDIV
+    cp      YL, fdiv                ; 1   Compare counter against fdiv
     cpc     YH, AL                  ; 1
-    brlo    toggle_flip_flop        ; 1|2 Skip following if counter < FDIV
+    brlo    toggle_flip_flop        ; 1|2 Skip following if counter < fdiv
     clr     YL                      ; 1   Reset counter
     clr     YH                      ; 1
 toggle_flip_flop:
     ldi     AH, @2                  ; 1   Load tone mask
     eor     flags, AH               ; 1   Toggle tone flip-flop
-    cp      XL, FDIV                ; 1   Compare period against FDIV
+    cp      XL, fdiv                ; 1   Compare period against fdiv
     cpc     XH, AL                  ; 1
-    brsh    exit_tone               ; 1|2 Skip following if period >= FDIV
+    brsh    exit_tone               ; 1|2 Skip following if period >= fdiv
     or      flags, AH               ; 1   Lock flip-flop in high state
 exit_tone:
-    add     YL, FDIV                ; 1   counter = counter + FDIV
+    add     YL, fdiv                ; 1   counter = counter + fdiv
     adc     YH, AL                  ; 1
-    sts     @1 + 0, YL              ; 1   Save tone counter into SRAM
-    sts     @1 + 1, YH              ; 1   Tone counter high byte
+    sts     L(@1), YL               ; 1   Save tone counter into SRAM
+    sts     H(@1), YH               ; 1   Tone counter high byte
 .endmacro                           ; MAX CYCLES: 24
 
 .macro noise_envelope_generator
     ; Read state from SRAM and init loop ------------------------------[  9]----
-    lds     XL, e_period  + 0       ; 1   Load envelope peiod from SRAM
-    lds     XH, e_period  + 1       ; 1   Envelope period high byte
-    lds     YL, e_counter + 0       ; 1   Load envelope counter from SRAM
-    lds     YH, e_counter + 1       ; 1   Envelope counter high byte
-    lds     BL, n_shifter + 0       ; 1   Load noise shifter from SRAM
-    lds     BH, n_shifter + 1       ; 1   Noise shifter high byte
+    lds     XL, L(e_period)         ; 1   Load envelope peiod from SRAM
+    lds     XH, H(e_period)         ; 1   Envelope period high byte
+    lds     YL, L(e_counter)        ; 1   Load envelope counter from SRAM
+    lds     YH, H(e_counter)        ; 1   Envelope counter high byte
+    lds     BL, L(n_shifter)        ; 1   Load noise shifter from SRAM
+    lds     BH, H(n_shifter)        ; 1   Noise shifter high byte
     lds     AL, n_period            ; 1   Load noise period from SRAM and double
     lsl     AL                      ; 1   it to simulate noise prescaler
-    mov     AH, FDIV                ; 1   Init update iterations
+    mov     AH, fdiv                ; 1   Init update iterations
 iteration_loop:
 
     ; Update noise generator ------------------------------------------[ 16]----
@@ -310,7 +316,7 @@ exit_noise:
     brlo    exit_envelope           ; 1|2 Skip following if counter < period
     clr     YL                      ; 1   Reset counter
     clr     YH                      ; 1
-    ldi     ZL, low(2*envelopes)    ; 1   Increment or decrement envelope step
+    ldi     ZL, low(P(envelopes))   ; 1   Increment or decrement envelope step
     add     ZL, e_gen               ; 1   counter depending on envelope genera-
     ld      ZL, Z                   ; 2   tion config
     add     e_stp, ZL               ; 1
@@ -318,7 +324,7 @@ exit_noise:
     brlo    exit_envelope           ; 1|2 increment or get 0xFF after decrement
     ldi     ZL, 0b00000010          ; 1   then generation config switches to the
     eor     e_gen, ZL               ; 1   alteravive phase and envelope step 
-    ldi     ZL, low(2*envelopes+1)  ; 1   reloads with a new value from config
+    ldi     ZL, low(P(envelopes)+1) ; 1   reloads with a new value from config
     add     ZL, e_gen               ; 1
     ld      e_stp, Z                ; 2
 exit_envelope:
@@ -327,11 +333,11 @@ exit_envelope:
     ; Go to the next iteration or exit --------------------------------[  6]----
     dec     AH                      ; 1   Decrement iteration counter and
     brne    iteration_loop          ; 1|2 go to next interation
-    sts     n_shifter + 0, BL       ; 1   Save noise shifter into SRAM
-    sts     n_shifter + 1, BH       ; 1   Noise shifter high byte
-    sts     e_counter + 0, YL       ; 1   Save envelope counter into SRAM
-    sts     e_counter + 1, YH       ; 1   Envelope counter high byte
-.endmacro                           ; MAX CYCLES: 9 + FDIV * (16 + 20) + 6 = 303
+    sts     L(n_shifter), BL        ; 1   Save noise shifter into SRAM
+    sts     H(n_shifter), BH        ; 1   Noise shifter high byte
+    sts     L(e_counter), YL        ; 1   Save envelope counter into SRAM
+    sts     H(e_counter), YH        ; 1   Envelope counter high byte
+.endmacro                           ; MAX CYCLES: 9 + fdiv * (16 + 20) + 6 = 303
 
 .macro sample_generator
     ; AL is envelope sample
@@ -362,21 +368,21 @@ loop:
     ; Reset envelope generator after shape change -------------------[  12 ]----
     sbrs    flags, EG_RES           ; 1|2 Skip next instruction if no need to
     rjmp    no_envelope_reset       ; 2   reset envelope generator
-    cbr     flags, B(EG_RES)        ; 1   Clear request for reset envelope
-    sts     e_counter + 0, AL       ; 1   Reset envelope counter
-    sts     e_counter + 1, AL       ; 1
+    cbr     flags, M(EG_RES)        ; 1   Clear request for reset envelope
+    sts     L(e_counter), AL        ; 1   Reset envelope counter
+    sts     H(e_counter), AL        ; 1
     lds     e_gen, e_shape          ; 1   Init envelope generator with a new
     lsl     e_gen                   ; 1   shape, index in table is shape * 4
     lsl     e_gen                   ; 1
-    ldi     ZL, low(2*envelopes+1)  ; 1   Init envelope step with value from
+    ldi     ZL, low(P(envelopes)+1) ; 1   Init envelope step with value from
     add     ZL, e_gen               ; 1   envelope generator table
     ld      e_stp, Z                ; 2
 no_envelope_reset:
 
     ; Update tone generators ----------------------------------------[  72 ]----
-    tone_generator a_period, a_counter, 0b00000001 ; max: 24
-    tone_generator b_period, b_counter, 0b00000010 ; max: 24
-    tone_generator c_period, c_counter, 0b00000100 ; max: 24
+    tone_generator a_period, a_counter, M(chA) ; max: 24
+    tone_generator b_period, b_counter, M(chB) ; max: 24
+    tone_generator c_period, c_counter, M(chC) ; max: 24
 
     ; Update noise and envelope generators --------------------------[ 303 ]----
     noise_envelope_generator        ; max: 303
@@ -390,13 +396,13 @@ no_envelope_reset:
     and     AH, AL                  ; 1   Output:          xxxx.xcba & xxxx.xCBA
 
     ; Compute sample for each channel -------------------------------[  32 ]----
-    ldi     ZL, low(2*amp_5bit)     ; 1
+    ldi     ZL, low(P(amp_5bit))    ; 1
     add     ZL, e_stp               ; 1
     ld      AL, Z                   ; 2
-    ldi     BL, low(2*amp_4bit)     ; 1
-    sample_generator a_volume, bit0, XL ; max: 9
-    sample_generator b_volume, bit1, BH ; max: 9
-    sample_generator c_volume, bit2, XH ; max: 9
+    ldi     BL, low(P(amp_4bit))    ; 1
+    sample_generator a_volume, chA, XL ; max: 9
+    sample_generator b_volume, chB, BH ; max: 9
+    sample_generator c_volume, chC, XH ; max: 9
 
     ; Outup samples to compare match registers ----------------------[   7 ]----
     lsr     BH                      ; 1

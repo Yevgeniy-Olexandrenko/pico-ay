@@ -20,7 +20,6 @@
     .equ    F1_00_FDIV   = (1000000 / 8 / SAMPLE_RATE)
     .equ    F1_75_FDIV   = (1750000 / 8 / SAMPLE_RATE)
     .equ    F2_00_FDIV   = (2000000 / 8 / SAMPLE_RATE)
-    .equ    BIT_DURATION = (F_CPU / BAUD_RATE)
 
     .def    FDIV    = r16           ;
     .def    raddr   = r17           ;
@@ -169,109 +168,71 @@ clear_loop:                         ;
     ; Setup everything else ----------------------------------------------------
     ldi     FDIV,  F1_75_FDIV       ;
     ldi     flags, 0b11000111       ;
+    sbr     raddr, B(bit4)          ;
     sei                             ;
-#if 0
-    ldi     AL, 0b00111101
-    sts     mixer, AL
-
-    ldi     AL, 0x0F
-    sts     a_volume, AL
-    sts     c_volume, AL
-
-    ldi     AL, 0x10
-    sts     b_volume, AL
-
-    ldi     AL, 0x01
-    sts     a_period + 1, AL
-
-    ldi     AL, 0x02
-    sts     c_period + 1, AL
-
-    ldi     AL, 0x10
-    sts     b_period + 1, AL
-
-    ldi     AL, 0x10
-    sts     e_period + 0, AL
-
-    ldi     AL, 0x0A
-    sts     e_shape, AL
-#endif
     rjmp    loop                    ;
 
 ; UART PROTOCOL ----------------------------------------------------------------
-    .equ    STR_BIT_DELAY = (((BIT_DURATION / 2) - 9 + 3) / 3)
-    .equ    DAT_BIT_DELAY = (( BIT_DURATION - 6) / 3)
-    .equ    STP_BIT_DELAY = (( BIT_DURATION - 6) / 3)
+    .equ    BIT_DURATION = (F_CPU / BAUD_RATE)
+    .equ    BIT_DELAY_10 = int((1.0 * BIT_DURATION - 5 + 1.5) / 3)
+    .equ    BIT_DELAY_15 = int((1.5 * BIT_DURATION - 9 + 1.5) / 3)
 
     ; It's good to have the delay between received bytes about 200 microseconds.
     ; In this case the receiver will be able to handle new byte properly.
 
-.macro uart_delay
-    ldi     YL, @0                  ; 1   One iteration delays for 3 cpu cycles
-delay_loop:
-    dec     YL                      ; 1   Last iteration delays for 2 cpu cycles
-    brne    delay_loop              ; 1|2 but loop init is taken into account
-.endmacro
-
 int0_isr:
+    ; Enter interrupt service routine ------------------------------------------
     push    YL                      ; 2   Delay loop counter
     push    YH                      ; 2   Data bits shift register
-    push    ZL                      ; 2   dData bits loop counter
-    in      ZL, SREG                ; 1   This ISR needs for 4+2 bytes of SRAM
-    push    ZL                      ; 2   to save registers and return address
+    in      YH, SREG                ; 1   This ISR needs for 4+2 bytes of SRAM
+    push    YH                      ; 2   to save registers and return address
 
-    ; Delay for the middle of the start bit ------------------------------------
-    uart_delay STR_BIT_DELAY
-
-    ; Read data bits from LSB to MSB -------------------------------------------
-    nop                             ; 1   For better delaying
-    clr     YH                      ; 1   Clear data bits shift register
-    ldi     ZL, 8                   ; 1   Init data bits loop counter
-bit_read_loop:
-    uart_delay DAT_BIT_DELAY
-    lsr     YH                      ; 1   Shift bit register to the right
-    sbic    PINB, PORTB2            ; 1|2 Skip next instruction if RX is clear
-    ori     YH, 0x80                ; 1   Set data bit 7 if RX is set
-    dec     ZL                      ; 1   Go to the next bit
-    brne    bit_read_loop           ; 1|2
-    nop                             ; 1   For better delaying
-
-    ; Check if the stop bit is correct -----------------------------------------
-    uart_delay STP_BIT_DELAY
-    sbis    PINB, PORTB2            ; Skip next instruction if RX is set, it
-    rjmp    exit_isr                ; means the stop bit is correct
+    ; Read data bits from LSB to MSB and wait for stop bit ---------------------
+    ldi     YL, BIT_DELAY_15        ; 1   Delay for 1.5 bit (0.5*START+1.0*DATA) 
+    ldi     YH, 0x80                ; 1   Bit shift counter
+data_bit_loop:
+    subi    YL, 1                   ; 1   Decrement and clear carry
+    brne    data_bit_loop           ; 1|2 Go to next iteration
+    ldi     YL, BIT_DELAY_10        ; 1   Load delay for next bit
+    sbic    PINB, PORTB2            ; 1|2 Check UART RX PIN
+    sec                             ; 1   Set carry if RX is HIGH
+    ror     YH                      ; 1   Shift register loading carry to bit7
+    brcc    data_bit_loop           ; 1|2 Loop through shift register
+stop_bit_loop:
+    dec     YL                      ; 1   Stop bit delay loop
+    brne    stop_bit_loop           ; 1|2 Go to next iteration
 
     ; Handle received byte according to the protocol ---------------------------
-    sbrs    raddr, bit4             ; Skip next instruction if waiting for 
-    rjmp    reg_data_received       ; incoming register address
-    cpi     YH, 0xF0                ; Check if received byte is a valid
-    brlo    reg_addr_received       ; register addres, otherwise try to sync
-    sbr     raddr, B(bit4)          ; Set reg address beyond allowed value to
-    rjmp    exit_isr                ; indicate the waiting for allowed value
-reg_addr_received:
-    mov     raddr, YH               ; Received data is a register address,
-    rjmp    exit_isr                ; so save it and exit
+    sbrs    raddr, bit4             ;     Skip next instruction if waiting for 
+    rjmp    reg_data_received       ;     incoming register address
+    cpi     YH, 0x10                ;     Check if received byte is a valid
+    brsh    reg_addr_exit           ;     register addres, otherwise try to sync
+    mov     raddr, YH               ;     Received data is a register address,
+    rjmp    reg_addr_exit           ;     so save it and exit
 reg_data_received:
-    ldi     ZL, low(2*reg_mask)     ; Read register mask from FLASH for
-    add     ZL, raddr               ; current register address
+    push    ZL                      ;     We need one more register for indexing
+    ldi     ZL, low(2*reg_mask)     ;     Read register mask from FLASH for
+    add     ZL, raddr               ;     current register address
     lpm     ZL, Z
-    and     ZL, YH                  ; Apply mask for received register data
-    ldi     YL, low (psg_regs)      ; store register data to the SRAM
+    and     ZL, YH                  ;     Apply mask for received register data
+    ldi     YL, low (psg_regs)      ;     Store register data to the SRAM
     ldi     YH, high(psg_regs)
     add     YL, raddr
     st      Y, ZL
-    cpi     raddr, 0x0D             ; Check if register address is an
-    brne    exit_isr                ; envelope shape register address
-    sbr     flags, B(EG_RES)        ; Set envelope generator reset flag
+    pop     ZL                      ;     Restore register from stack
+    cpi     raddr, 0x0D             ;     Check if register address is an
+    brne    reg_data_exit           ;     envelope shape register address
+    sbr     flags, B(EG_RES)        ;     Set envelope generator reset flag
+reg_data_exit:
+    sbr     raddr, B(bit4)          ;     Wait for next byte as register address
+reg_addr_exit:
 
     ; Exit interrupt service routine -------------------------------------------
-exit_isr:
-    pop     ZL
-    out     SREG, ZL
-    pop     ZL
-    pop     YH
-    pop     YL
-    reti
+    pop     YH                      ;     Restore used registers from stack
+    out     SREG, YH                ;
+    pop     YH                      ;
+    pop     YL                      ;
+    reti                            ;     Return from ISR
 
 ; MAIN LOOP --------------------------------------------------------------------
 .macro tone_generator

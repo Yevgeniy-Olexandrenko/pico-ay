@@ -119,37 +119,37 @@ envelopes:  ; 64 bytes
     .equ    _hld =  0
     .equ    _top = 0x1F
     .equ    _bot = 0x00
-    .db     _dec, _top, _hld, _bot
-    .db     _dec, _top, _hld, _bot
-    .db     _dec, _top, _hld, _bot
-    .db     _dec, _top, _hld, _bot
-    .db     _inc, _bot, _hld, _bot
-    .db     _inc, _bot, _hld, _bot
-    .db     _inc, _bot, _hld, _bot
-    .db     _inc, _bot, _hld, _bot
-    .db     _dec, _top, _dec, _top
-    .db     _dec, _top, _hld, _bot
-    .db     _dec, _top, _inc, _bot
-    .db     _dec, _top, _hld, _top
-    .db     _inc, _bot, _inc, _bot
-    .db     _inc, _bot, _hld, _top
-    .db     _inc, _bot, _dec, _top
-    .db     _inc, _bot, _hld, _bot
+    .db     _dec, _top, _hld, _bot  ; 0
+    .db     _dec, _top, _hld, _bot  ; 1
+    .db     _dec, _top, _hld, _bot  ; 2
+    .db     _dec, _top, _hld, _bot  ; 3
+    .db     _inc, _bot, _hld, _bot  ; 4
+    .db     _inc, _bot, _hld, _bot  ; 5
+    .db     _inc, _bot, _hld, _bot  ; 6
+    .db     _inc, _bot, _hld, _bot  ; 7
+    .db     _dec, _top, _dec, _top  ; 8
+    .db     _dec, _top, _hld, _bot  ; 9
+    .db     _dec, _top, _inc, _bot  ; A
+    .db     _dec, _top, _hld, _top  ; B
+    .db     _inc, _bot, _inc, _bot  ; C
+    .db     _inc, _bot, _hld, _top  ; D
+    .db     _inc, _bot, _dec, _top  ; E
+    .db     _inc, _bot, _hld, _bot  ; F
 
 ; ENTRY POINT ------------------------------------------------------------------
 main:
     ; Clear SRAM ---------------------------------------------------------------
-    ldi     AL, 0x20                ;
-    ldi     AH, 0x00                ; Zero value used in initialization
-    ldi     ZL, SRAM_START          ;
+    clr     AH                      ; Zero value used in initialization
+    ldi     AL, psg_end-psg_regs    ; SRAM size used by firmware algorithm
+    ldi     ZL, psg_regs            ;
     mov     ZH, AH                  ;
-clear_loop:                         ;
+sram_clear_loop:                    ;
     st      Z+, AH                  ;
     dec     AL                      ;
-    brne    clear_loop              ;
+    brne    sram_clear_loop         ;
 
     ; Setup stack and access to FLASH ------------------------------------------
-    ldi     AL, low(RAMEND)         ;
+    ldi     AL, low(RAMEND)         ; Set stack pointer
     out     SPL, AL                 ;
     ldi     AL, high(RAMEND)        ;
     out     SPH, AL                 ;
@@ -178,7 +178,9 @@ clear_loop:                         ;
     ; Setup everything else ----------------------------------------------------
     ldi     fdiv,  F1_75_FDIV
     ldi     flags, M(NS_B16) | M(EG_RES)
-    sbr     raddr, M(WF_REG)
+    ldi     raddr, M(WF_REG)        ; Wait the register address to write
+    mov     XL, AH                  ; Load zero to left channel sample register
+    mov     XH, AH                  ; Load zero to right channel sample register
     sei                             ; Enable interrupts
     rjmp    loop                    ; Go to main loop
 
@@ -249,7 +251,7 @@ reg_addr_exit:
     ; AL must be 0x00
     ; @0 is period register
     ; @1 is counter
-    ; @2 is channel mask
+    ; @2 is channel bit
     lds     XL, L(@0)               ; 1   Load tone period from SRAM
     lds     XH, H(@0)               ; 1   Tone period high byte
     lds     YL, L(@1)               ; 1   Load tone counter from SRAM
@@ -265,7 +267,7 @@ reg_addr_exit:
     clr     YL                      ; 1   Reset counter
     clr     YH                      ; 1
 toggle_flip_flop:
-    ldi     AH, @2                  ; 1   Load tone mask
+    ldi     AH, M(@2)               ; 1   Load tone mask
     eor     flags, AH               ; 1   Toggle tone flip-flop
     cp      XL, fdiv                ; 1   Compare period against fdiv
     cpc     XH, AL                  ; 1
@@ -358,12 +360,14 @@ use_envelope:
 .endmacro                           ; MAX CYCLES: 9
 
 loop:
-    ; Check for timer overflow --------------------------------------[   5 ]----
+    ; Check for timer overflow --------------------------------------[   7 ]----
     in      AL, TIFR0               ; 1   Check timer0 overflow flag TOV0
     sbrs    AL, TOV0                ; 1|2 Skip next instruction if TOV0 is set
     rjmp    loop                    ; 2   otherwise jump to the loop beginning
     out     TIFR0, AL               ; 1   Clear timer overflow flag
     clr     AL                      ; 1   Clear temp register to use as zero
+    out     OCR0AL, XL              ; 1   Output left channel amplitude
+    out     OCR0BL, XH              ; 1   Output right channel amplitude
 
     ; Reset envelope generator after shape change -------------------[  12 ]----
     sbrs    flags, EG_RES           ; 1|2 Skip next instruction if no need to
@@ -380,9 +384,9 @@ loop:
 no_envelope_reset:
 
     ; Update tone generators ----------------------------------------[  72 ]----
-    tone_generator a_period, a_counter, M(chA) ; max: 24
-    tone_generator b_period, b_counter, M(chB) ; max: 24
-    tone_generator c_period, c_counter, M(chC) ; max: 24
+    tone_generator a_period, a_counter, chA ; max: 24
+    tone_generator b_period, b_counter, chB ; max: 24
+    tone_generator c_period, c_counter, chC ; max: 24
 
     ; Update noise and envelope generators --------------------------[ 303 ]----
     noise_envelope_generator        ; max: 303
@@ -404,15 +408,13 @@ no_envelope_reset:
     sample_generator b_volume, chB, BH ; max: 9
     sample_generator c_volume, chC, XH ; max: 9
 
-    ; Outup samples to compare match registers ----------------------[   7 ]----
-    lsr     BH                      ; 1
-    add     XL, BH                  ; 1
-    add     XH, BH                  ; 1
-    out     OCR0AL, XL              ; 1
-    out     OCR0BL, XH              ; 1
-    rjmp    loop                    ; 2
+    ; Complute left/right channels samples  -------------------------[   5 ]----
+    lsr     BH                      ; 1   Divide B channel by 2
+    add     XL, BH                  ; 1   Left  = Add B channel to A channel
+    add     XH, BH                  ; 1   Right = Add B channel to C channel
+    rjmp    loop                    ; 2   Go to main loop next iteration
 
-    ; MAX CYCLES: 5 + 12 + 72 + 303 + 6 + 32 + 7 = 437
+    ; MAX CYCLES: 7 + 12 + 72 + 303 + 6 + 32 + 5 = 437
     ; AVG CYCLES: 437 / 2 = 218
 
 ; ------------------------------------------------------------------------------
@@ -433,11 +435,11 @@ b_volume:   .byte 1
 c_volume:   .byte 1
 e_period:   .byte 2
 e_shape:    .byte 1
-config:     .byte 1
-unused:     .byte 1
-
+port_a:     .byte 1
+port_b:     .byte 1
 a_counter:  .byte 2
 b_counter:  .byte 2
 c_counter:  .byte 2
 n_shifter:  .byte 2
 e_counter:  .byte 2
+psg_end:

@@ -8,6 +8,8 @@
 #include <fstream>
 #include <algorithm>
 
+//#define SIMPLIFIED_COUNTERS
+
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -17,7 +19,7 @@ const uint8_t  PWM_BITS     = 8;
 const uint8_t  PWM_CHANNELS = 1;
 
 const uint8_t  FRAME_RATE   = 50;
-const uint32_t SAMPLE_RATE  = (F_CPU / (1 << PWM_BITS));//(F_CPU / 289);
+const uint32_t SAMPLE_RATE  = (F_CPU / (1 << PWM_BITS));
 const uint8_t  SAMPLE_SIZE  = (PWM_BITS / 8 * PWM_CHANNELS);
 const uint16_t PSG_C_PER_S  = (F_PSG / 8 / SAMPLE_RATE);
 const uint16_t BUFFER_SIZE  = (SAMPLE_RATE / FRAME_RATE) * SAMPLE_SIZE;
@@ -149,6 +151,24 @@ void avr_init()
 
 void avr_tone_generator(const uint8_t& step, const uint16_t& period, uint16_t& counter, const uint8_t& mask, uint8_t& flags)
 {
+#ifdef SIMPLIFIED_COUNTERS
+	if ((int16_t)counter <= 0)
+	{
+		if (period < step)
+		{
+			// special case, no generation
+			counter = 0;
+			flags |= mask;
+		}
+		else
+		{
+			// reload counter, toggle flip-flop
+			counter += period;
+			flags ^= mask;
+		}
+	}
+	counter -= step;
+#else
 	if (counter >= period)
 	{
 		// reload counter
@@ -165,6 +185,7 @@ void avr_tone_generator(const uint8_t& step, const uint16_t& period, uint16_t& c
 			flags |= mask;
 	}
 	counter += step;
+#endif
 }
 
 void avr_envelope_generator(const uint16_t& period, uint16_t& counter, uint8_t& config, uint8_t& step)
@@ -201,8 +222,8 @@ void avr_noise_generator(const uint8_t& period, uint8_t& counter, uint16_t& shif
 		flags |= b16;
 
 		// toggle flip-flop
-		flags |= 0b00111000;
-		if (shift & 0x0001) flags &= 0b11000111;
+		flags &= 0b11000111;
+		if (shift & 0x0001) flags |= 0b00111000;
 	}
 	counter++;
 }

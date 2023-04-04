@@ -8,7 +8,9 @@
 #include <fstream>
 #include <algorithm>
 
-//#define SIMPLIFIED_COUNTERS
+#define SIMPLIFIED_COUNTERS	0
+#define SIMPLIFIED_NOISE	1
+#define SIMPLIFIED_ENVELOPE	1
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -151,7 +153,7 @@ void avr_init()
 
 void avr_tone_generator(const uint8_t& step, const uint16_t& period, uint16_t& counter, const uint8_t& mask, uint8_t& flags)
 {
-#ifdef SIMPLIFIED_COUNTERS
+#if SIMPLIFIED_COUNTERS
 	if ((int16_t)counter <= 0)
 	{
 		if (period < step)
@@ -188,44 +190,99 @@ void avr_tone_generator(const uint8_t& step, const uint16_t& period, uint16_t& c
 #endif
 }
 
-void avr_envelope_generator(const uint16_t& period, uint16_t& counter, uint8_t& config, uint8_t& step)
+void avr_envelope_generator(const uint8_t& step, const uint16_t& period, uint16_t& counter, uint8_t& config, uint8_t& e_stp)
 {
-	if (counter >= period)
-	{
-		// reload counter
-		counter = 0;
+#if SIMPLIFIED_ENVELOPE
+	static bool flag = false;
+	uint8_t _step = (flag ^= true) ? (step >> 1) : step - (step >> 1);
 
-		// update cycle step
-		step += envelopes[config];
-		if (step > 0x1F)
+	for (int i = 0; i < _step; ++i)
+	{
+		if (counter >= period)
 		{
-			config ^= 0b00000010;
-			step = envelopes[config | 1];
+			// reload counter
+			counter = 0;
+
+			// update cycle step
+			e_stp += envelopes[config];
+			if (e_stp > 0x0F)
+			{
+				config ^= 0b00000010;
+				e_stp = (envelopes[config | 1] >> 1);
+			}
 		}
+		counter++;
 	}
-	counter++;
+#else
+	for (int i = 0; i < step; ++i)
+	{
+		if (counter >= period)
+		{
+			// reload counter
+			counter = 0;
+
+			// update cycle step
+			e_stp += envelopes[config];
+			if (e_stp > 0x1F)
+			{
+				config ^= 0b00000010;
+				e_stp = envelopes[config | 1];
+			}
+		}
+		counter++;
+	}
+#endif
 }
 
-void avr_noise_generator(const uint8_t& period, uint8_t& counter, uint16_t& shift, uint8_t& flags)
+void avr_noise_generator(const uint8_t& step, const uint8_t& period, uint8_t& counter, uint16_t& shift, uint8_t& flags)
 {
-	uint8_t period_x2 = (period << 1);
-	if (counter >= period_x2)
+#if SIMPLIFIED_NOISE
+	static bool flag = false;
+	uint8_t _step = (flag ^= true) ? (step >> 1) : step - (step >> 1);
+
+	for (int i = 0; i < _step; ++i)
 	{
-		// reload counter
-		counter = 0;
+		if (counter >= period)
+		{
+			// reload counter
+			counter = 0;
 
-		// update shifter
-		auto b16 = uint8_t((shift ^ (shift >> 3)) << 7);
-		shift >>= 1;
-		shift |= ((flags & 0b10000000) << 8);
-		flags &= 0b01111111;
-		flags |= b16;
+			// update shifter
+			auto b16 = uint8_t((shift ^ (shift >> 3)) << 7);
+			shift >>= 1;
+			shift |= ((flags & 0b10000000) << 8);
+			flags &= 0b01111111;
+			flags |= b16;
 
-		// toggle flip-flop
-		flags &= 0b11000111;
-		if (shift & 0x0001) flags |= 0b00111000;
+			// toggle flip-flop
+			flags &= 0b11000111;
+			if (shift & 0x0001) flags |= 0b00111000;
+		}
+		counter++;
 	}
-	counter++;
+#else
+	for (int i = 0; i < step; ++i)
+	{
+		uint8_t period_x2 = (period << 1);
+		if (counter >= period_x2)
+		{
+			// reload counter
+			counter = 0;
+
+			// update shifter
+			auto b16 = uint8_t((shift ^ (shift >> 3)) << 7);
+			shift >>= 1;
+			shift |= ((flags & 0b10000000) << 8);
+			flags &= 0b01111111;
+			flags |= b16;
+
+			// toggle flip-flop
+			flags &= 0b11000111;
+			if (shift & 0x0001) flags |= 0b00111000;
+		}
+		counter++;
+	}
+#endif
 }
 
 void avr_sample_generator(const uint8_t& e_sample, const uint8_t& volume, const uint8_t& flags, const uint8_t& mask, uint8_t& sample)
@@ -249,17 +306,18 @@ void avr_update(uint8_t& out_l, uint8_t& out_r)
 	avr_tone_generator(PSG_C_PER_S, psg.b_period, state.b_counter, 0b00000010, state.flags);
 	avr_tone_generator(PSG_C_PER_S, psg.c_period, state.c_counter, 0b00000100, state.flags);
 
-	for (int i = 0; i < PSG_C_PER_S; ++i)
-	{
-		avr_noise_generator(psg.n_period, state.n_counter, state.n_shift, state.flags);
-		avr_envelope_generator(psg.e_period, state.e_counter, state.e_config, state.e_step);
-	}
+	avr_noise_generator(PSG_C_PER_S, psg.n_period, state.n_counter, state.n_shift, state.flags);
+	avr_envelope_generator(PSG_C_PER_S, psg.e_period, state.e_counter, state.e_config, state.e_step);
 
 	uint8_t output = (state.flags | psg.mixer);
 	output &= output >> 3;
 
 	uint8_t a_sample, b_sample, c_sample;
+#if SIMPLIFIED_ENVELOPE
+	uint8_t e_sample = amplitude4b[state.e_step];
+#else
 	uint8_t e_sample = amplitude5b[state.e_step];
+#endif
 	avr_sample_generator(e_sample, psg.a_volume, output, 0b00000001, a_sample);
 	avr_sample_generator(e_sample, psg.b_volume, output, 0b00000010, b_sample);
 	avr_sample_generator(e_sample, psg.c_volume, output, 0b00000100, c_sample);

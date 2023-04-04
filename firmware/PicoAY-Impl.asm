@@ -3,7 +3,7 @@
 ; ------------------------------------------------------------------------------
 
     .equ    BAUD_RATE   = 57600
-    .equ    SAMPLE_RATE = (F_CPU / 256)
+    .equ    SAMPLE_RATE = 31250
     .equ    FDIV        = (F_PSG / 8 / SAMPLE_RATE)
     .equ    MAX_AMP     = 170
 
@@ -125,8 +125,10 @@ sram_clear_loop:                    ;
     ; Setup stack --------------------------------------------------------------
     ldi     AL, low(RAMEND)         ; Set stack pointer
     out     SPL, AL                 ;
+.ifdef SPH
     ldi     AL, high(RAMEND)        ;
     out     SPH, AL                 ;
+.endif
 
     ; Setup access to data in FLASH --------------------------------------------
     setup_pgm_access                ;

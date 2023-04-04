@@ -208,6 +208,7 @@ reg_addr_exit:
 
 ; MAIN LOOP --------------------------------------------------------------------
 .macro tone_generator
+    ; AL is FDIV constant
     ; @0 is period register
     ; @1 is counter
     ; @2 is channel bit
@@ -222,7 +223,7 @@ reg_addr_exit:
     brlo    exit_tone               ; 1|2 Skip following if counter < period
     sub     YL, XL                  ; 1   counter = counter - period
     sbc     YH, XH                  ; 1
-    cpi     YL, FDIV                ; 1   Compare counter against fdiv
+    cp      YL, AL                  ; 1   Compare counter against fdiv
     cpc     YH, ZERO                ; 1
     brlo    toggle_flip_flop        ; 1|2 Skip following if counter < fdiv
     clr     YL                      ; 1   Reset counter
@@ -230,13 +231,12 @@ reg_addr_exit:
 toggle_flip_flop:
     ldi     AH, M(@2)               ; 1   Load tone mask
     eor     flags, AH               ; 1   Toggle tone flip-flop
-    cpi     XL, FDIV                ; 1   Compare period against fdiv
+    cp      XL, AL                  ; 1   Compare period against fdiv
     cpc     XH, ZERO                ; 1
     brsh    exit_tone               ; 1|2 Skip following if period >= fdiv
     or      flags, AH               ; 1   Lock flip-flop in high state
 exit_tone:
-;   addi    YL, FDIV                ; 1   counter = counter + fdiv
-    subi    YL, -FDIV               ; 1   counter = counter + fdiv
+    add     YL, AL                  ; 1   counter = counter + fdiv
     adc     YH, ZERO                ; 1
     sts     L(@1), YL               ; 1   Save tone counter into SRAM
     sts     H(@1), YH               ; 1   Tone counter high byte
@@ -339,8 +339,8 @@ use_envelope:
 .endm
 
 loop:
-    ; MAX CYCLES: 6 + 72 + 336 + 6 + 32 + 5 = 457
-    ; MIN CYCLES: 6 + 36 + 103 + 6 + 26 + 5 = 182
+    ; MAX CYCLES: 6 + 73 + 336 + 6 + 32 + 5 = 458
+    ; MIN CYCLES: 6 + 37 + 103 + 6 + 26 + 5 = 183
     ; AVG CYCLES: (457 + 182) / 2 = 320
 
     ; Waiting for timer overflow and outputting samples ---------------[..6|..4]
@@ -351,7 +351,8 @@ loop:
     out     PWM_CHANNEL_A, XL       ; 1   Output L/R channel 8-bit amplitude or
     out     PWM_CHANNEL_B, XH       ; 1   single mono channel 16-bit amplitude
 
-    ; Update tone generators ------------------------------------------[.72|.36]
+    ; Update tone generators ------------------------------------------[.73|.37]
+    ldi     AL, FDIV                ; 1
     tone_generator a_period, a_counter, chA ; max:24 min:12
     tone_generator b_period, b_counter, chB ; max:24 min:12
     tone_generator c_period, c_counter, chC ; max:24 min:12

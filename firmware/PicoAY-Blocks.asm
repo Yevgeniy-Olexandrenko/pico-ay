@@ -3,8 +3,12 @@
 ; ==============================================================================
 
     .equ    BAUD_RATE   = 57600
-    .equ    SAMPLE_RATE = 31250
-    .equ    FDIV        = (F_PSG / 8 / SAMPLE_RATE)
+    .equ    SAMPLE_RATE = (F_CPU / (TIMER_TOP + 1))
+    .equ    U_STEP      = (F_PSG / 8 / SAMPLE_RATE)
+
+.if U_STEP < 0x04 || U_STEP > 0x08
+    .error "Update step is out of range"
+.endif
 
     .def    ZERO    = r16           ;
     .def    raddr   = r17           ;
@@ -184,8 +188,8 @@ __setup_data_access
 .macro __setup_and_start_emulator
     ldi     flags, M(NS_B16) | M(EG_RES)
     ldi     raddr, M(WF_REG)        ; Wait the register address to write
-    mov     XL, AH                  ; Load zero to left channel sample register
-    mov     XH, AH                  ; Load zero to right channel sample register
+    mov     XL, ZERO                ; Load zero to left channel sample register
+    mov     XH, ZERO                ; Load zero to right channel sample register
     sei                             ; Enable interrupts
     rjmp    loop                    ; Go to main loop
 .endmacro
@@ -209,7 +213,7 @@ __setup_and_start_emulator
 #endif
 .endmacro
 
-; HANDLE UART RECEIVED DATA BYTE ACCORDING TO PROTOCOL -------------------------
+; HANDLE UART RECEIVED DATA ACCORDING TO PROTOCOL ------------------------------
 .macro __handle_uart_data
     ; YH received data byte
     sbrs    raddr, WF_REG           ;     Skip next instruction if waiting for 
@@ -240,10 +244,12 @@ __handle_uart_data
 
 ; SOFTWARE UART DATA RECEIVE ISR -----------------------------------------------
 .macro __sw_uart_rx_isr
+    ; @0 mcu port for UART RX input
+    ; @1 mcu pin number in port for UART RX
+
     .equ    BIT_DURATION = (F_CPU / BAUD_RATE)
     .equ    BIT_DELAY_10 = int((1.0 * BIT_DURATION - 5 + 1.5) / 3)
     .equ    BIT_DELAY_15 = int((1.5 * BIT_DURATION - 9 + 1.5) / 3)
-
     ; It's good to have the delay between received bytes about 200 microseconds.
     ; In this case the receiver will be able to handle new byte properly.
 
@@ -260,7 +266,7 @@ data_bit_loop:
     subi    YL, 1                   ; 1   Decrement and clear carry
     brne    data_bit_loop           ; 1|2 Go to next iteration
     ldi     YL, BIT_DELAY_10        ; 1   Load delay for next bit
-    sbic    PINB, PORTB2            ; 1|2 Check UART RX PIN
+    sbic    @0, @1                  ; 1|2 Check UART RX PIN
     sec                             ; 1   Set carry if RX is HIGH
     ror     YH                      ; 1   Shift register loading carry to bit7
     brcc    data_bit_loop           ; 1|2 Loop through shift register
@@ -278,8 +284,8 @@ stop_bit_loop:
     pop     YL                      ;
     reti                            ;     Return from ISR
 .endmacro
-#define code_sw_uart_rx_isr() \
-sw_uart_rx_isr: __sw_uart_rx_isr
+#define code_sw_uart_rx_isr(PORT, PIN) \
+sw_uart_rx_isr: __sw_uart_rx_isr PORT, PIN
 
 ; HARDWARE UART DATA RECEIVE ISR -----------------------------------------------
 .macro __hw_uart_rx_isr
@@ -307,7 +313,7 @@ __sync_and_out TOVF_R, TOVF_F, PWM_A, PWM_B
 
 ; UPDATE TONE GENERATOR --------------------------------------------------------
 .macro __update_tone
-    ; AL FDIV constant
+    ; AL U_STEP constant
     ; @0 channel tone period
     ; @1 channel tone counter
     ; @2 channel bit
@@ -321,20 +327,20 @@ __sync_and_out TOVF_R, TOVF_F, PWM_A, PWM_B
     brlo    exit_tone               ; 1|2 Skip following if counter < period
     sub     YL, XL                  ; 1   counter = counter - period
     sbc     YH, XH                  ; 1
-    cp      YL, AL                  ; 1   Compare counter against fdiv
+    cp      YL, AL                  ; 1   Compare counter against U_STEP
     cpc     YH, ZERO                ; 1
-    brlo    toggle_flip_flop        ; 1|2 Skip following if counter < fdiv
+    brlo    toggle_flip_flop        ; 1|2 Skip following if counter < U_STEP
     clr     YL                      ; 1   Reset counter
     clr     YH                      ; 1
 toggle_flip_flop:
     ldi     AH, M(@2)               ; 1   Load tone mask
     eor     flags, AH               ; 1   Toggle tone flip-flop
-    cp      XL, AL                  ; 1   Compare period against fdiv
+    cp      XL, AL                  ; 1   Compare period against U_STEP
     cpc     XH, ZERO                ; 1
-    brsh    exit_tone               ; 1|2 Skip following if period >= fdiv
+    brsh    exit_tone               ; 1|2 Skip following if period >= U_STEP
     or      flags, AH               ; 1   Lock flip-flop in high state
 exit_tone:
-    add     YL, AL                  ; 1   counter = counter + fdiv
+    add     YL, AL                  ; 1   counter = counter + U_STEP
     adc     YH, ZERO                ; 1
     sts     L(@1), YL               ; 1~2 Save tone counter into SRAM
     sts     H(@1), YH               ; 1~2 Tone counter high byte
@@ -362,12 +368,12 @@ __reset_envelope
 
 ; UPDATE NOISE AND ENVELOPE GENERATORS -----------------------------------------
 .macro __update_noise_envelope
-    ; AVR8L (fdiv = 0x08): 324-116
-    ; 9 + fdiv * (16 + 20 + 3) + 3 
-    ; 9 + fdiv * (4 + 6 + 3) + 3 
-    ; V2 (fdiv = 0x08): 351-127
-    ; 16 + fdiv * (16 + 22 + 3) + 7 
-    ; 16 + fdiv * (4 + 6 + 3) + 7 
+    ; AVR8L (U_STEP = 0x08): 324-116
+    ; 9 + U_STEP * (16 + 20 + 3) + 3 
+    ; 9 + U_STEP * (4 + 6 + 3) + 3 
+    ; V2 (U_STEP = 0x08): 351-127
+    ; 16 + U_STEP * (16 + 22 + 3) + 7 
+    ; 16 + U_STEP * (4 + 6 + 3) + 7 
 
     ; Read state from SRAM and init loop
     ; AVR8L:9-9 V2:16-16
@@ -379,7 +385,7 @@ __reset_envelope
     lds     BH, H(n_shifter)        ; 1~2 Noise shifter high byte
     lds     AL, n_period            ; 1~2 Load noise period from SRAM and double
     lsl     AL                      ; 1   it to simulate noise prescaler
-    ldi     AH, FDIV                ; 1   Init update iterations
+    ldi     AH, U_STEP              ; 1   Init update iterations
 iteration_loop:
 
     ; Update noise generator

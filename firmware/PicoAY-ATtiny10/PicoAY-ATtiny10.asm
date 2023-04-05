@@ -13,6 +13,7 @@
 
     .equ    F_CPU       = 8000000
     .equ    F_PSG       = 1750000
+    .equ    TIMER_TOP   = 0xFF
     .equ    MAX_AMP     = 170
 
     .include "../PicoAY-Blocks.asm"
@@ -68,14 +69,14 @@ main:
     code_setup_and_start_emulator()
 
     ; Software UART implementation
-    code_sw_uart_rx_isr()
+    code_sw_uart_rx_isr(PINB, PORTB2)
 
 loop:
     ; Waiting for timer overflow and samples output
     code_sync_and_out(TIFR0, TOV0, OCR0AL, OCR0BL)
 
     ; Update tone, noise and envelope generators
-    ldi     AL, FDIV                ; 1
+    ldi     AL, U_STEP                ; 1
     code_update_tone(a_period, a_counter, chA) ; max:24 min:12
     code_update_tone(b_period, b_counter, chB) ; max:24 min:12
     code_update_tone(c_period, c_counter, chC) ; max:24 min:12

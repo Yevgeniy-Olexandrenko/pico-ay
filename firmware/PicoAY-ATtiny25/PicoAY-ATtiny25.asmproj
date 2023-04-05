@@ -12,7 +12,7 @@
     <OutputDirectory>$(MSBuildProjectDirectory)\$(Configuration)</OutputDirectory>
     <Language>ASSEMBLY</Language>
     <AssemblyName>PicoAY-ATtiny25-Release</AssemblyName>
-    <Name>PicoAY-ATtiny25-Release</Name>
+    <Name>PicoAY-ATtiny25</Name>
     <RootNamespace>PicoAY-ATtiny25-Release</RootNamespace>
     <ToolchainFlavour>Native</ToolchainFlavour>
     <EntryFile>$(MSBuildProjectDirectory)\PicoAY-ATtiny25.asm</EntryFile>

@@ -12,7 +12,7 @@
     <OutputDirectory>$(MSBuildProjectDirectory)\$(Configuration)</OutputDirectory>
     <Language>ASSEMBLY</Language>
     <AssemblyName>ATtiny10-Release</AssemblyName>
-    <Name>PicoAY-ATtiny10-Release</Name>
+    <Name>PicoAY-ATtiny10</Name>
     <RootNamespace>ATtiny10-Release</RootNamespace>
     <ToolchainFlavour>Native</ToolchainFlavour>
     <EntryFile>$(MSBuildProjectDirectory)\PicoAY-ATtiny10.asm</EntryFile>
@@ -32,13 +32,13 @@
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
     <ToolchainSettings>
       <AvrAssembler>
-  <avrasm.assembler.general.AdditionalIncludeDirectories>
-    <ListValues>
-      <Value>%24(PackRepoDir)\atmel\ATtiny_DFP\1.10.348\avrasm\inc</Value>
-    </ListValues>
-  </avrasm.assembler.general.AdditionalIncludeDirectories>
-  <avrasm.assembler.general.IncludeFile>tn10def.inc</avrasm.assembler.general.IncludeFile>
-</AvrAssembler>
+        <avrasm.assembler.general.AdditionalIncludeDirectories>
+          <ListValues>
+            <Value>%24(PackRepoDir)\atmel\ATtiny_DFP\1.10.348\avrasm\inc</Value>
+          </ListValues>
+        </avrasm.assembler.general.AdditionalIncludeDirectories>
+        <avrasm.assembler.general.IncludeFile>tn10def.inc</avrasm.assembler.general.IncludeFile>
+      </AvrAssembler>
     </ToolchainSettings>
     <OutputType>Executable</OutputType>
   </PropertyGroup>

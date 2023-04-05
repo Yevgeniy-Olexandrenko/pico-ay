@@ -31,11 +31,6 @@
     ; Do nothing
 .endm
 
-.macro setup_pgm_access
-    ; Setup access to data in FLASH --------------------------------------------
-    ldi     ZH, 0x00
-.endm
-
 .macro setup_uart_rx_interrupt
     ; Setup external interrupt INT0 on PB2 for UART RX -------------------------
     cbi     DDRB,  PORTB2           ; Set PORTB2 as input
@@ -58,14 +53,6 @@
 
 .macro setup_unused_hardware
     ; TODO
-.endm
-
-.macro ldp
-    ; ZL table base or displasement
-    ; @0 destination register
-    ; @1 displacement or table base
-    add     ZL, @1                  ; Add table base with displacement
-    lpm     @0, Z                   ; Load indirrect from Z
 .endm
 
 ; ------------------------------------------------------------------------------

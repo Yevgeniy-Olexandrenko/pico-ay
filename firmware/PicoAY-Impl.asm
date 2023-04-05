@@ -1,5 +1,3 @@
-.include "../PicoAY-Blocks.asm"
-
 ; ------------------------------------------------------------------------------
 ; DEFINES
 ; ------------------------------------------------------------------------------
@@ -44,6 +42,8 @@
     ; b6 - envelope resolution: 0: 5-bit, 1: 4-bit
     ; b7 - stereo mode: 0: ABC, 1: ACB
 
+    .include "../PicoAY-Blocks.asm"
+
 ; ------------------------------------------------------------------------------
 ; FLASH
 ; ------------------------------------------------------------------------------
@@ -56,34 +56,15 @@
     rjmp    uart_isr                ; UART handler
 
 ; DATA TABLES  -----------------------------------------------------------------
-    cseg_reg_mask()
-    cseg_amp_4bit(MAX_AMP)
-    cseg_amp_5bit(MAX_AMP)
-    cseg_envelopes(32)
+    data_reg_mask()
+    data_amp_4bit(MAX_AMP)
+    data_amp_5bit(MAX_AMP)
+    data_envelopes(32)
 
 ; ENTRY POINT ------------------------------------------------------------------
 main:
-    clr     ZERO                    ; Always zero value used across the code
-
-    ; Clear SRAM variables -----------------------------------------------------
-    ldi     ZL, low(psg_regs)       ; Setup start address in SRAM
-    ldi     ZH, high(psg_regs)      ;
-    ldi     AL, psg_end-psg_regs    ; SRAM size to be cleared
-sram_clear_loop:                    ;
-    st      Z+, ZERO                ;
-    dec     AL                      ;
-    brne    sram_clear_loop         ;
-
-    ; Setup stack --------------------------------------------------------------
-    ldi     AL, low(RAMEND)         ; Set stack pointer
-    out     SPL, AL                 ;
-.ifdef SPH
-    ldi     AL, high(RAMEND)        ;
-    out     SPH, AL                 ;
-.endif
-
-    ; Setup access to data in FLASH --------------------------------------------
-    setup_pgm_access                ;
+    code_setup_sram()
+    code_setup_data_access()
 
     ; Setup MCU hardware components --------------------------------------------
     setup_cpu_clock                 ;
@@ -92,12 +73,7 @@ sram_clear_loop:                    ;
     setup_unused_hardware           ;
 
     ; Setup everything else ----------------------------------------------------
-    ldi     flags, M(NS_B16) | M(EG_RES)
-    ldi     raddr, M(WF_REG)        ; Wait the register address to write
-    mov     XL, AH                  ; Load zero to left channel sample register
-    mov     XH, AH                  ; Load zero to right channel sample register
-    sei                             ; Enable interrupts
-    rjmp    loop                    ; Go to main loop
+    code_setup_and_start_emulator()
 
 ; UART PROTOCOL ----------------------------------------------------------------
     .equ    BIT_DURATION = (F_CPU / BAUD_RATE)

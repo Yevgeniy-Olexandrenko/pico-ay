@@ -1,12 +1,18 @@
-; ------------------------------------------------------------------------------
+; ==============================================================================
+; DATA BLOCKS
+; ==============================================================================
 
+.listmac
+
+; VALUE MASK FOR EACH PSG REGISTER ---------------------------------------------
 .macro __reg_mask
     ; 16 bytes
     .db     0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0x1F, 0x3F
     .db     0x1F, 0x1F, 0x1F, 0xFF, 0xFF, 0x0F, 0xFF, 0xFF
 .endmacro
-#define cseg_reg_mask() reg_mask: __reg_mask
+#define data_reg_mask() reg_mask: __reg_mask
 
+; 4-BIT VOLUME TO AMPLITUDE ----------------------------------------------------
 .macro __amp_4bit
     ; @0 - Maximum amplitude
     ; 16 bytes
@@ -23,8 +29,9 @@
     .error "Maximum amplitude is out of range"
 .endif
 .endmacro
-#define cseg_amp_4bit(MAX_AMP) amp_4bit: __amp_4bit MAX_AMP
+#define data_amp_4bit(MAX_AMP) amp_4bit: __amp_4bit MAX_AMP
 
+; 5-BIT VOLUME TO AMPLITUDE ----------------------------------------------------
 .macro __amp_5bit
     ; @0 - Maximum amplitude
     ; 32 bytes
@@ -49,8 +56,9 @@
     .error "Maximum amplitude is out of range"
 .endif
 .endmacro
-#define cseg_amp_5bit(MAX_AMP) amp_5bit: __amp_5bit MAX_AMP
+#define data_amp_5bit(MAX_AMP) amp_5bit: __amp_5bit MAX_AMP
 
+; ENVELOPE GENERATION INSTRUCTIONS ---------------------------------------------
 .macro __envelopes
     ; @0 - Number of steps in waveform
     ; 64 bytes
@@ -80,4 +88,69 @@
     .error "Unknown number of steps for envelope"
 .endif
 .endmacro
-#define cseg_envelopes(STEPS) envelopes: __envelopes STEPS
+#define data_envelopes(STEPS) envelopes: __envelopes STEPS
+
+; ==============================================================================
+; CODE BLOCKS
+; ==============================================================================
+
+; CLEAR SRAM VARIABLES AND SET STACK POINTER -----------------------------------
+.macro __setup_sram
+    clr     ZERO                    ; Always zero value used across the code
+
+    ; Clear SRAM variables
+    ldi     ZL, low(psg_regs)       ; Setup start address in SRAM
+    ldi     ZH, high(psg_regs)      ;
+    ldi     AL, psg_end-psg_regs    ; SRAM size to be cleared
+sram_clear_loop:                    ;
+    st      Z+, ZERO                ;
+    dec     AL                      ;
+    brne    sram_clear_loop         ;
+
+    ; Set stack pointer
+    ldi     AL, low(RAMEND)         ;
+    out     SPL, AL                 ;
+.ifdef SPH
+    ldi     AL, high(RAMEND)        ;
+    out     SPH, AL                 ;
+.endif
+.endmacro
+#define code_setup_sram() __setup_sram
+
+; SET Z POINTER TO FIRST 256 BYTES OF FLASH TO ASSESS DATA ---------------------
+.macro __setup_data_access
+.ifdef MAPPED_FLASH_START
+    ldi     ZH, high(MAPPED_FLASH_START)
+.else
+    ldi     ZH, 0x00
+.endif
+.endmacro
+#define code_setup_data_access() __setup_data_access
+
+; SETUP EVERYTHING ELSE AND START EMULATOR -------------------------------------
+.macro __setup_and_start_emulator
+    ldi     flags, M(NS_B16) | M(EG_RES)
+    ldi     raddr, M(WF_REG)        ; Wait the register address to write
+    mov     XL, AH                  ; Load zero to left channel sample register
+    mov     XH, AH                  ; Load zero to right channel sample register
+    sei                             ; Enable interrupts
+    rjmp    loop                    ; Go to main loop
+.endmacro
+#define code_setup_and_start_emulator() __setup_and_start_emulator
+
+; LOAD DATA FROM FLASH USING TABLE BASE AND DISPLACEMENT -----------------------
+.macro ldp
+    ; ZL table base or displasement
+    ; @0 destination register
+    ; @1 displacement or table base
+#ifdef __CORE_AVR8L_0__
+    add     ZL, @1                  ; Add table base with displacement
+    ld      @0, Z                   ; Load indirrect from Z
+#elif __CORE_V2__
+    add     ZL, @1                  ; Add table base with displacement
+    lpm     @0, Z                   ; Load indirrect from Z
+#else
+    .error "Unknown AVR core version"
+#endif
+.endmacro
+

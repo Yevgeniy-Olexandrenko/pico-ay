@@ -53,7 +53,7 @@
     rjmp    main                    ; RESET handler
 
     .org    UART_INT_ADDR
-    rjmp    uart_isr                ; UART handler
+    rjmp    sw_uart_rx_isr          ; UART handler
 
 ; DATA TABLES  -----------------------------------------------------------------
     data_reg_mask()
@@ -76,65 +76,7 @@ main:
     code_setup_and_start_emulator()
 
 ; UART PROTOCOL ----------------------------------------------------------------
-    .equ    BIT_DURATION = (F_CPU / BAUD_RATE)
-    .equ    BIT_DELAY_10 = int((1.0 * BIT_DURATION - 5 + 1.5) / 3)
-    .equ    BIT_DELAY_15 = int((1.5 * BIT_DURATION - 9 + 1.5) / 3)
-
-    ; It's good to have the delay between received bytes about 200 microseconds.
-    ; In this case the receiver will be able to handle new byte properly.
-
-uart_isr:
-    ; Enter interrupt service routine ------------------------------------------
-    push    YL                      ; 2   Delay loop counter
-    push    YH                      ; 2   Data bits shift register
-    in      YH, SREG                ; 1   This ISR needs for 4+2 bytes of SRAM
-    push    YH                      ; 2   to save registers and return address
-
-    ; Read data bits from LSB to MSB and wait for stop bit ---------------------
-    ldi     YL, BIT_DELAY_15        ; 1   Delay for 1.5 bit (0.5*START+1.0*DATA) 
-    ldi     YH, 0x80                ; 1   Bit shift counter
-data_bit_loop:
-    subi    YL, 1                   ; 1   Decrement and clear carry
-    brne    data_bit_loop           ; 1|2 Go to next iteration
-    ldi     YL, BIT_DELAY_10        ; 1   Load delay for next bit
-    sbic    PINB, PORTB2            ; 1|2 Check UART RX PIN
-    sec                             ; 1   Set carry if RX is HIGH
-    ror     YH                      ; 1   Shift register loading carry to bit7
-    brcc    data_bit_loop           ; 1|2 Loop through shift register
-stop_bit_loop:
-    dec     YL                      ; 1   Stop bit delay loop
-    brne    stop_bit_loop           ; 1|2 Go to next iteration
-
-    ; Handle received byte according to the protocol ---------------------------
-    sbrs    raddr, WF_REG           ;     Skip next instruction if waiting for 
-    rjmp    reg_data_received       ;     incoming register address
-    cpi     YH, 0x10                ;     Check if received byte is a valid
-    brsh    reg_addr_exit           ;     register addres, otherwise try to sync
-    mov     raddr, YH               ;     Received data is a register address,
-    rjmp    reg_addr_exit           ;     so save it and exit
-reg_data_received:
-    push    ZL                      ;     We need one more register for indexing
-    ldi     ZL, low(P(reg_mask))    ;     Read register mask from FLASH for
-    ldp     ZL, raddr               ;     current register address
-    and     ZL, YH                  ;     Apply mask for received register data
-    ldi     YL, low (psg_regs)      ;     Store register data to the SRAM
-    ldi     YH, high(psg_regs)
-    add     YL, raddr
-    st      Y, ZL
-    pop     ZL                      ;     Restore register from stack
-    cpi     raddr, 0x0D             ;     Check if register address is an
-    brne    reg_data_exit           ;     envelope shape register address
-    sbr     flags, M(EG_RES)        ;     Set envelope generator reset flag
-reg_data_exit:
-    sbr     raddr, M(WF_REG)        ;     Wait for next byte as register address
-reg_addr_exit:
-
-    ; Exit interrupt service routine -------------------------------------------
-    pop     YH                      ;     Restore used registers from stack
-    out     SREG, YH                ;
-    pop     YH                      ;
-    pop     YL                      ;
-    reti                            ;     Return from ISR
+    code_sw_uart_rx_isr()
 
 ; MAIN LOOP --------------------------------------------------------------------
 .macro tone_generator

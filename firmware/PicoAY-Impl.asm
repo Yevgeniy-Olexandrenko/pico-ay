@@ -2,35 +2,7 @@
 ; DEFINES
 ; ------------------------------------------------------------------------------
 
-    .equ    BAUD_RATE   = 57600
-    .equ    SAMPLE_RATE = 31250
-    .equ    FDIV        = (F_PSG / 8 / SAMPLE_RATE)
     .equ    MAX_AMP     = 170
-
-    .def    ZERO    = r16           ;
-    .def    raddr   = r17           ;
-    .def    flags   = r18           ; 
-    .def    n_cnt   = r19           ;
-    .def    e_stp   = r20           ;
-    .def    e_gen   = r21           ;
-    .def    AL      = r22           ;
-    .def    AH      = r23           ;
-    .def    BL      = r24           ;
-    .def    BH      = r25           ;
-;   .def    XL      = r26           ;
-;   .def    XH      = r27           ;
-;   .def    YL      = r28           ;
-;   .def    YH      = r29           ;
-;   .def    ZL      = r30           ;
-;   .def    ZH      = r31           ;
-
-    .equ    chA     = bit0
-    .equ    chB     = bit1
-    .equ    chC     = bit2
-
-    .equ    NS_B16  = bit7          ; Noise shifter bit16
-    .equ    EG_RES  = bit6          ; Envelope generator reset
-    .equ    WF_REG  = bit4          ; Waiting for register address
 
     ; config 0 bits:
     ; b0 - disable channel A
@@ -41,8 +13,6 @@
     ; b5 - 0: custom 1.00 MHz PSG clock, 1: custom 2.00 MHz clock
     ; b6 - envelope resolution: 0: 5-bit, 1: 4-bit
     ; b7 - stereo mode: 0: ABC, 1: ACB
-
-    .include "../PicoAY-Blocks.asm"
 
 ; ------------------------------------------------------------------------------
 ; FLASH

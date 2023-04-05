@@ -57,7 +57,8 @@
     .db     0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0x1F, 0x3F
     .db     0x1F, 0x1F, 0x1F, 0xFF, 0xFF, 0x0F, 0xFF, 0xFF
 .endmacro
-#define data_reg_mask() reg_mask: __reg_mask
+#define data_reg_mask() \
+reg_mask: __reg_mask
 
 ; 4-BIT VOLUME TO AMPLITUDE ----------------------------------------------------
 .macro __amp_4bit
@@ -76,7 +77,8 @@
     .error "Maximum amplitude is out of range"
 .endif
 .endmacro
-#define data_amp_4bit(MAX_AMP) amp_4bit: __amp_4bit MAX_AMP
+#define data_amp_4bit(MAX_AMP) \
+amp_4bit: __amp_4bit MAX_AMP
 
 ; 5-BIT VOLUME TO AMPLITUDE ----------------------------------------------------
 .macro __amp_5bit
@@ -103,7 +105,8 @@
     .error "Maximum amplitude is out of range"
 .endif
 .endmacro
-#define data_amp_5bit(MAX_AMP) amp_5bit: __amp_5bit MAX_AMP
+#define data_amp_5bit(MAX_AMP) \
+amp_5bit: __amp_5bit MAX_AMP
 
 ; ENVELOPE GENERATION INSTRUCTIONS ---------------------------------------------
 .macro __envelopes
@@ -135,7 +138,8 @@
     .error "Unknown number of steps for envelope"
 .endif
 .endmacro
-#define data_envelopes(STEPS) envelopes: __envelopes STEPS
+#define data_envelopes(STEPS) \
+envelopes: __envelopes STEPS
 
 ; ==============================================================================
 ; CODE BLOCKS
@@ -162,7 +166,8 @@ sram_clear_loop:                    ;
     out     SPH, AL                 ;
 .endif
 .endmacro
-#define code_setup_sram() __setup_sram
+#define code_setup_sram() \
+__setup_sram
 
 ; SET Z POINTER TO FIRST 256 BYTES OF FLASH TO ASSESS DATA ---------------------
 .macro __setup_data_access
@@ -172,7 +177,8 @@ sram_clear_loop:                    ;
     ldi     ZH, 0x00
 .endif
 .endmacro
-#define code_setup_data_access() __setup_data_access
+#define code_setup_data_access() \
+__setup_data_access
 
 ; SETUP EVERYTHING ELSE AND START EMULATOR -------------------------------------
 .macro __setup_and_start_emulator
@@ -183,19 +189,21 @@ sram_clear_loop:                    ;
     sei                             ; Enable interrupts
     rjmp    loop                    ; Go to main loop
 .endmacro
-#define code_setup_and_start_emulator() __setup_and_start_emulator
+#define code_setup_and_start_emulator() \
+__setup_and_start_emulator
 
 ; LOAD DATA FROM FLASH USING TABLE BASE AND DISPLACEMENT -----------------------
 .macro ldp
     ; ZL table base or displasement
     ; @0 destination register
     ; @1 displacement or table base
+    ; AVR8L:3/3 V2:4/4
 #ifdef __CORE_AVR8L_0__
-    add     ZL, @1                  ; Add table base with displacement
-    ld      @0, Z                   ; Load indirrect from Z
+    add     ZL, @1                  ; 1   Add table base with displacement
+    ld      @0, Z                   ; 2   Load indirrect from Z
 #elif __CORE_V2__
-    add     ZL, @1                  ; Add table base with displacement
-    lpm     @0, Z                   ; Load indirrect from Z
+    add     ZL, @1                  ; 1   Add table base with displacement
+    lpm     @0, Z                   ; 3   Load indirrect from Z
 #else
     .error "Unknown AVR core version"
 #endif
@@ -204,7 +212,6 @@ sram_clear_loop:                    ;
 ; HANDLE UART RECEIVED DATA BYTE ACCORDING TO PROTOCOL -------------------------
 .macro __handle_uart_data
     ; YH received data byte
-    ; modified: raddr, flags, YL, YH, Stack
     sbrs    raddr, WF_REG           ;     Skip next instruction if waiting for 
     rjmp    reg_data_received       ;     incoming register address
     cpi     YH, 0x10                ;     Check if received byte is a valid
@@ -228,7 +235,8 @@ reg_data_exit:
     sbr     raddr, M(WF_REG)        ;     Wait for next byte as register address
 reg_addr_exit:
 .endmacro
-#define code_handle_uart_data() __handle_uart_data
+#define code_handle_uart_data() \
+__handle_uart_data
 
 ; SOFTWARE UART DATA RECEIVE ISR -----------------------------------------------
 .macro __sw_uart_rx_isr
@@ -270,10 +278,246 @@ stop_bit_loop:
     pop     YL                      ;
     reti                            ;     Return from ISR
 .endmacro
-#define code_sw_uart_rx_isr() sw_uart_rx_isr: __sw_uart_rx_isr
+#define code_sw_uart_rx_isr() \
+sw_uart_rx_isr: __sw_uart_rx_isr
 
 ; HARDWARE UART DATA RECEIVE ISR -----------------------------------------------
 .macro __hw_uart_rx_isr
     ; TODO
 .endmacro
-#define code_hw_uart_rx_isr() hw_uart_isr: __hw_uart_rx_isr
+#define code_hw_uart_rx_isr() \
+hw_uart_isr: __hw_uart_rx_isr
+
+; SYNCHRONIZE IN TIME AND OUTPUT PREVIOUSLY COMPUTED RESULT --------------------
+.macro __sync_and_out
+    ; @0 mcu register containing timer overflow flag
+    ; @1 mcu timer overflow flag bit in register
+    ; @2 PWM channel A
+    ; @3 PWM channel B
+    ; AVR8L:6-4 V2:6-4
+    in      AL, @0                  ; 1   Check timer overflow flag
+    sbrs    AL, @1                  ; 1|2 Skip next instruction if flag is set
+    rjmp    loop                    ; 2   otherwise jump to the loop beginning
+    out     @0, AL                  ; 1   Clear timer overflow flag
+    out     @2, XL                  ; 1   Output L/R channel 8-bit samples or
+    out     @3, XH                  ; 1   mono channel 16-bit sample
+.endmacro
+#define code_sync_and_out(TOVF_R, TOVF_F, PWM_A, PWM_B) \
+__sync_and_out TOVF_R, TOVF_F, PWM_A, PWM_B
+
+; UPDATE TONE GENERATOR --------------------------------------------------------
+.macro __update_tone
+    ; AL FDIV constant
+    ; @0 channel tone period
+    ; @1 channel tone counter
+    ; @2 channel bit
+    ; AVR8L:24-12 V2:30-18
+    lds     XL, L(@0)               ; 1~2 Load tone period from SRAM
+    lds     XH, H(@0)               ; 1~2 Tone period high byte
+    lds     YL, L(@1)               ; 1~2 Load tone counter from SRAM
+    lds     YH, H(@1)               ; 1~2 Tone counter high byte
+    cp      YL, XL                  ; 1   Compare counter against period
+    cpc     YH, XH                  ; 1
+    brlo    exit_tone               ; 1|2 Skip following if counter < period
+    sub     YL, XL                  ; 1   counter = counter - period
+    sbc     YH, XH                  ; 1
+    cp      YL, AL                  ; 1   Compare counter against fdiv
+    cpc     YH, ZERO                ; 1
+    brlo    toggle_flip_flop        ; 1|2 Skip following if counter < fdiv
+    clr     YL                      ; 1   Reset counter
+    clr     YH                      ; 1
+toggle_flip_flop:
+    ldi     AH, M(@2)               ; 1   Load tone mask
+    eor     flags, AH               ; 1   Toggle tone flip-flop
+    cp      XL, AL                  ; 1   Compare period against fdiv
+    cpc     XH, ZERO                ; 1
+    brsh    exit_tone               ; 1|2 Skip following if period >= fdiv
+    or      flags, AH               ; 1   Lock flip-flop in high state
+exit_tone:
+    add     YL, AL                  ; 1   counter = counter + fdiv
+    adc     YH, ZERO                ; 1
+    sts     L(@1), YL               ; 1~2 Save tone counter into SRAM
+    sts     H(@1), YH               ; 1~2 Tone counter high byte
+.endmacro
+#define code_update_tone(PERIOD, COUNTER, CHANNEL) \
+__update_tone PERIOD, COUNTER, CHANNEL
+
+; RESET ENVELOPE GENERATOR -----------------------------------------------------
+.macro __reset_envelope
+    ; AVR8L:12-3 V2:16-3
+    sbrs    flags, EG_RES           ; 1|2 Skip next instruction if no need to
+    rjmp    exit_envelope_reset     ; 2   reset envelope generator
+    cbr     flags, M(EG_RES)        ; 1   Clear request for reset envelope
+    sts     L(e_counter), ZERO      ; 1~2 Reset envelope counter
+    sts     H(e_counter), ZERO      ; 1~2
+    lds     e_gen, e_shape          ; 1~2 Init envelope generator with a new
+    lsl     e_gen                   ; 1   shape, index in table is shape * 4
+    lsl     e_gen                   ; 1
+    ldi     ZL, low(P(envelopes)+1) ; 1   Init envelope step with value from
+    ldp     e_stp, e_gen            ; 3~4 envelope generator table
+exit_envelope_reset:
+.endmacro
+#define code_reset_envelope() \
+__reset_envelope
+
+; UPDATE NOISE AND ENVELOPE GENERATORS -----------------------------------------
+.macro __update_noise_envelope
+    ; AVR8L (fdiv = 0x08): 324-116
+    ; 9 + fdiv * (16 + 20 + 3) + 3 
+    ; 9 + fdiv * (4 + 6 + 3) + 3 
+    ; V2 (fdiv = 0x08): 351-127
+    ; 16 + fdiv * (16 + 22 + 3) + 7 
+    ; 16 + fdiv * (4 + 6 + 3) + 7 
+
+    ; Read state from SRAM and init loop
+    ; AVR8L:9-9 V2:16-16
+    lds     XL, L(e_period)         ; 1~2 Load envelope peiod from SRAM
+    lds     XH, H(e_period)         ; 1~2 Envelope period high byte
+    lds     YL, L(e_counter)        ; 1~2 Load envelope counter from SRAM
+    lds     YH, H(e_counter)        ; 1~2 Envelope counter high byte
+    lds     BL, L(n_shifter)        ; 1~2 Load noise shifter from SRAM
+    lds     BH, H(n_shifter)        ; 1~2 Noise shifter high byte
+    lds     AL, n_period            ; 1~2 Load noise period from SRAM and double
+    lsl     AL                      ; 1   it to simulate noise prescaler
+    ldi     AH, FDIV                ; 1   Init update iterations
+iteration_loop:
+
+    ; Update noise generator
+    ; AVR8L:16-4 V2:16-4
+    cp      n_cnt, AL               ; 1   Compare counter against period
+    brlo    exit_noise              ; 1|2 Skip following if counter < period
+    clr     n_cnt                   ; 1   Reset counter
+    bst     BL, bit3                ; 1   Compute the feedback based on
+    bld     ZL, bit0                ; 1   bit3 xor bit0 of the shifter
+    eor     ZL, BL                  ; 1
+    ror     BH                      ; 1   Shift 17-bit shifter, bit16 is located
+    ror     BL                      ; 1   in the bit7 of the flags regster
+    bst     flags, NS_B16           ; 1
+    bld     BH, bit7                ; 1
+    bst     ZL, bit0                ; 1   Store feedback as bit16 of the shifter
+    bld     flags, NS_B16           ; 1   in bit7 of the flags register
+    cbr     flags, 0b00111000       ; 1   Set noise output flags according to
+    sbrc    BL, bit0                ; 1|2 bit0 of the current shifter state
+    sbr     flags, 0b00111000       ; 1
+exit_noise:
+    inc     n_cnt                   ; 1   counter = counter + 1
+
+    ; Update envelope generator
+    ; AVR8L:20-6 V2:22-6
+    cp      YL, XL                  ; 1   Compare counter against period
+    cpc     YH, XH                  ; 1
+    brlo    exit_envelope           ; 1|2 Skip following if counter < period
+    clr     YL                      ; 1   Reset counter
+    clr     YH                      ; 1
+    ldi     ZL, low(P(envelopes))   ; 1   Inc/dec envelope step counter depend-
+    ldp     ZL, e_gen               ; 3~4 ing on envelope generation config
+    add     e_stp, ZL               ; 1
+    cpi     e_stp, 0x20             ; 1   When envelope step reaches 0x20 after
+    brlo    exit_envelope           ; 1|2 increment or get 0xFF after decrement
+    ldi     ZL, 0b00000010          ; 1   then generation config switches to the
+    eor     e_gen, ZL               ; 1   alteravive phase and envelope step 
+    ldi     ZL, low(P(envelopes)+1) ; 1   reloads with a new value from config
+    ldp     e_stp, e_gen            ; 3~4
+exit_envelope:
+    ld      ZL, Y+                  ; 2   counter = counter + 1
+
+    ; Go to the next iteration or exit
+    ; AVR8L:6-3 V2:10-3
+    dec     AH                      ; 1   Decrement iteration counter and
+    brne    iteration_loop          ; 1|2 go to next interation
+    sts     L(n_shifter), BL        ; 1~2 Save noise shifter into SRAM
+    sts     H(n_shifter), BH        ; 1~2 Noise shifter high byte
+    sts     L(e_counter), YL        ; 1~2 Save envelope counter into SRAM
+    sts     H(e_counter), YH        ; 1~2 Envelope counter high byte
+.endmacro
+#define code_update_noise_envelope() \
+__update_noise_envelope
+
+; APPLY MIXER FLAGS AND COMPUTE TONE/NOISE LEVELS ------------------------------
+.macro __apply_mixer
+    ; AH tone/noise level bits output
+    ; AVR8L:6-7 V2:6-7
+    lds     AH, mixer               ; 1~2 Mixer: xxCB.Acba (CBA:Noise, cba:Tone)
+    or      AH, flags               ; 1   Apply disables:  xxCB.Acba | xxNN.Ncba
+    mov     AL, AH                  ; 1
+    lsl     AL                      ; 1   Shift left:      xxCB.Acba > xCBA.cbax
+    swap    AL                      ; 1   Swap nibbles:    xCBA.cbax > cbax.xCBA
+    and     AH, AL                  ; 1   Output:          xxxx.xcba & xxxx.xCBA
+.endmacro
+#define code_apply_mixer() \
+__apply_mixer
+
+; COMPUTE CHANNEL SAMPLE -------------------------------------------------------
+.macro __compute_sample
+    ; AL envelope sample
+    ; AH mixer output
+    ; BL amplitude table offset
+    ; @0 channel volume
+    ; @1 channel bit
+    ; @2 output sample
+    ; AVR8L:9-7 V2:11-8
+    mov     @2, AL                  ; 1   Use envelope amplitude by default
+    lds     ZL, @0                  ; 1~2 volume+envelope flag from PSG register
+    bst     ZL, bit4                ; 1   Check if envelope enabled in this
+    brts    use_envelope            ; 1|2 channel and skip amplitude computation
+    ldp     @2, BL                  ; 3~4 Get amplitude from table using volume
+use_envelope:
+    sbrs    AH, @1                  ; 1|2 If channel disabled in mixer (N and T)
+    clr     @2                      ; 1   then set amplitude to zero value
+.endmacro
+#define code_compute_sample(VOLUME, CHANNEL, SAMPLE) \
+__compute_sample VOLUME, CHANNEL, SAMPLE
+
+; COMPUTE STEREO 8-BIT OR MONO 16-BIT OUTPUT -----------------------------------
+    .equ MONO       = 0             ;
+    .equ STEREO_ABC = 1             ;
+    .equ STEREO_ACB = 2             ;
+
+.macro __compute_output
+    ; XL channel A sample -> stereo L sample / mono sample LSB
+    ; BH channel B sample
+    ; XH channel C sample -> stereo R sample / mono sample MSB
+    ; @0 output type
+.if @0 == MONO
+    ; TODO
+.elif @0 == STEREO_ABC
+    ; AVR8L:3-3 V2:3-3
+    lsr     BH                      ; 1   Divide B channel sample by 2
+    add     XL, BH                  ; 1   Left  = Add B channel to A channel
+    add     XH, BH                  ; 1   Right = Add B channel to C channel
+.elif @0 == STEREO_ACB
+    ; AVR8L:3-3 V2:3-3
+    lsr     XH                      ; 1   Divide C channel sample by 2
+    add     XL, XH                  ; 1   Left  = Add C channel to A channel
+    add     XH, BH                  ; 1   Right = Add C channel to B channel
+.else
+    .error "Unknown output mode"
+.endif
+.endmacro
+#define code_compute_output(TYPE) \
+__compute_output TYPE
+
+; ==============================================================================
+; SRAM BLOCKS
+; ==============================================================================
+
+#define sram_psg_regs_and_state()   \
+psg_regs:                           \
+a_period:   .byte 2                 \
+b_period:   .byte 2                 \
+c_period:   .byte 2                 \
+n_period:   .byte 1                 \
+mixer:      .byte 1                 \
+a_volume:   .byte 1                 \
+b_volume:   .byte 1                 \
+c_volume:   .byte 1                 \
+e_period:   .byte 2                 \
+e_shape:    .byte 1                 \
+port_a:     .byte 1                 \
+port_b:     .byte 1                 \
+a_counter:  .byte 2                 \
+b_counter:  .byte 2                 \
+c_counter:  .byte 2                 \
+n_shifter:  .byte 2                 \
+e_counter:  .byte 2                 \
+psg_end:

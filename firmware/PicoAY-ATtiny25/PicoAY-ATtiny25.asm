@@ -3,7 +3,7 @@
 ;                                  +--------+                                  ;
 ;                   (/RESET) PB5 --|*1    8 |-- VCC                            ;
 ;                            PB3 --| 2    7 |-- PB2 (UART_RX)                  ;
-;                (PWM_OUT_L) PB4 --| 3    6 |-- PB1 (PWM_OUT_L)                ;
+;                (PWM_OUT_R) PB4 --| 3    6 |-- PB1 (PWM_OUT_L)                ;
 ;                            GND --| 4    5 |-- PB0                            ;
 ;                                  +--------+                                  ;
 ;                                                                              ;

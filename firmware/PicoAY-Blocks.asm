@@ -3,11 +3,24 @@
 ; ==============================================================================
 
     .equ    BAUD_RATE   = 57600
+
+; Compute timer top value and update step
+.ifdef TIMER_TOP
+.ifndef U_STEP
     .equ    SAMPLE_RATE = (F_CPU / (TIMER_TOP + 1))
     .equ    U_STEP      = (F_PSG / 8 / SAMPLE_RATE)
-
-.if U_STEP < 0x04 || U_STEP > 0x08
-    .error "Update step is out of range"
+    .if     U_STEP < 0x04 || U_STEP > 0x08
+    .error  "Update step is out of range"
+    .endif
+.endif
+.else
+.ifdef U_STEP
+    .if     U_STEP < 0x04 || U_STEP > 0x08
+    .error  "Update step is out of range"
+    .endif
+    .equ    SAMPLE_RATE = (F_PSG / 8 / U_STEP)
+    .equ    TIMER_TOP   = (F_CPU / SAMPLE_RATE - 1)
+.endif
 .endif
 
     .def    ZERO    = r16           ;
@@ -368,13 +381,23 @@ __reset_envelope
 
 ; UPDATE NOISE AND ENVELOPE GENERATORS -----------------------------------------
 .macro __update_noise_envelope
-    ; AVR8L (U_STEP = 0x08): 324-116
+    ; 16 step envelope, max update step is 0x04:
+    ; AVR8L: 167-63
+    ; 8 + U_STEP * (16 + 20 + 3) + 3
+    ; 8 + U_STEP * (4 + 6 + 3) + 3
+    ; V2: 186-74
+    ; 15 + U_STEP * (16 + 22 + 3) + 7
+    ; 15 + U_STEP * (4 + 6 + 3) + 7
+    
+    ; 32 step envelope, max update step is 0x08:
+    ; AVR8L: 324-116
     ; 9 + U_STEP * (16 + 20 + 3) + 3 
     ; 9 + U_STEP * (4 + 6 + 3) + 3 
-    ; V2 (U_STEP = 0x08): 351-127
+    ; V2: 351-127
     ; 16 + U_STEP * (16 + 22 + 3) + 7 
-    ; 16 + U_STEP * (4 + 6 + 3) + 7 
+    ; 16 + U_STEP * (4 + 6 + 3) + 7
 
+.if @0 == 16 || @0 == 32
     ; Read state from SRAM and init loop
     ; AVR8L:9-9 V2:16-16
     lds     XL, L(e_period)         ; 1~2 Load envelope peiod from SRAM
@@ -384,8 +407,15 @@ __reset_envelope
     lds     BL, L(n_shifter)        ; 1~2 Load noise shifter from SRAM
     lds     BH, H(n_shifter)        ; 1~2 Noise shifter high byte
     lds     AL, n_period            ; 1~2 Load noise period from SRAM and double
+.if @0 == 16
+    .if     U_STEP/2 != U_STEP-U_STEP/2
+    .error  "Update step must be even number"
+    .endif
+    ldi     AH, U_STEP/2            ; 1   Init update iterations
+.else
     lsl     AL                      ; 1   it to simulate noise prescaler
     ldi     AH, U_STEP              ; 1   Init update iterations
+.endif
 iteration_loop:
 
     ; Update noise generator
@@ -418,8 +448,8 @@ exit_noise:
     ldi     ZL, low(P(envelopes))   ; 1   Inc/dec envelope step counter depend-
     ldp     ZL, e_gen               ; 3~4 ing on envelope generation config
     add     e_stp, ZL               ; 1
-    cpi     e_stp, 0x20             ; 1   When envelope step reaches 0x20 after
-    brlo    exit_envelope           ; 1|2 increment or get 0xFF after decrement
+    cpi     e_stp, @0               ; 1   When envelope step reaches 16/32 after
+    brlo    exit_envelope           ; 1|2 increment or get 255 after decrement
     ldi     ZL, 0b00000010          ; 1   then generation config switches to the
     eor     e_gen, ZL               ; 1   alteravive phase and envelope step 
     ldi     ZL, low(P(envelopes)+1) ; 1   reloads with a new value from config
@@ -435,14 +465,17 @@ exit_envelope:
     sts     H(n_shifter), BH        ; 1~2 Noise shifter high byte
     sts     L(e_counter), YL        ; 1~2 Save envelope counter into SRAM
     sts     H(e_counter), YH        ; 1~2 Envelope counter high byte
+.else
+	.error "Unknown number of steps for envelope"
+.endif
 .endmacro
-#define code_update_noise_envelope() \
-__update_noise_envelope
+#define code_update_noise_envelope(STEPS) \
+__update_noise_envelope STEPS
 
 ; APPLY MIXER FLAGS AND COMPUTE TONE/NOISE LEVELS ------------------------------
 .macro __apply_mixer
     ; AH tone/noise level bits output
-    ; AVR8L:6-7 V2:6-7
+    ; AVR8L:6 V2:7
     lds     AH, mixer               ; 1~2 Mixer: xxCB.Acba (CBA:Noise, cba:Tone)
     or      AH, flags               ; 1   Apply disables:  xxCB.Acba | xxNN.Ncba
     mov     AL, AH                  ; 1
@@ -487,12 +520,12 @@ __compute_sample VOLUME, CHANNEL, SAMPLE
 .if @0 == MONO
     ; TODO
 .elif @0 == STEREO_ABC
-    ; AVR8L:3-3 V2:3-3
+    ; AVR8L:3 V2:3
     lsr     BH                      ; 1   Divide B channel sample by 2
     add     XL, BH                  ; 1   Left  = Add B channel to A channel
     add     XH, BH                  ; 1   Right = Add B channel to C channel
 .elif @0 == STEREO_ACB
-    ; AVR8L:3-3 V2:3-3
+    ; AVR8L:3 V2:3
     lsr     XH                      ; 1   Divide C channel sample by 2
     add     XL, XH                  ; 1   Left  = Add C channel to A channel
     add     XH, BH                  ; 1   Right = Add C channel to B channel

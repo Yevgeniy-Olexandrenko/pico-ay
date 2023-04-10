@@ -78,7 +78,7 @@ loop:
     code_update_tone(b_period, b_counter, chB) ; max:24 min:12
     code_update_tone(c_period, c_counter, chC) ; max:24 min:12
     code_reset_envelope()           ; max:12  min:3
-    code_update_noise_envelope()    ; max:324 min:100
+    code_update_noise_envelope(32)  ; max:324 min:100
     code_apply_mixer()              ; max:6   min:6
 
     ; Compute channels samples and stereo/mono output

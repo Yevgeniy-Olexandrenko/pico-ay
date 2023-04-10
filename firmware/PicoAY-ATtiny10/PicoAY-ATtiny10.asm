@@ -13,7 +13,7 @@
 
     .equ    F_CPU       = 8000000
     .equ    F_PSG       = 1750000
-    .equ    TIMER_TOP   = 0xFF
+    .equ    U_STEP      = 8
     .equ    MAX_AMP     = 170
 
     .include "../PicoAY-Blocks.asm"
@@ -34,8 +34,7 @@
 
     data_reg_mask()
     data_amp_4bit(MAX_AMP)
-    data_amp_5bit(MAX_AMP)
-    data_envelopes(32)
+    data_envelopes(16)
 
 ; ==============================================================================
 ; CODE
@@ -57,13 +56,17 @@ main:
     sbi     EICRA, ISC01            ; interrupt request
     sbi     EIMSK, INT0             ; Allow INT0 ISR execution
 
-    ; Setup Timer0 for Fast PWM 8-bit with 0xFF top
+    ; Setup Timer0 for Fast PWM 8-bit with ICR0 top
     sbi     DDRB, PORTB0            ; Set PORTB0 and PORTB1 as output
     sbi     DDRB, PORTB1            ; for Fast PWM (OC0A and OC0B)
-    ldi     AL, M(WGM00) | M(COM0A1) | M(COM0B1)
+    ldi     AL, M(WGM01) | M(COM0A1) | M(COM0B1)
     out     TCCR0A, AL              ; Clear OC0A/OC0B on compare match
-    ldi     AL, M(WGM02) | M(CS00)        
-    out     TCCR0B, AL              ; Fast PWM with no prescaling
+    ldi     AL, M(WGM02) | M(WGM03)  | M(CS00)        
+    out     TCCR0B, AL              ; Fast PWM with no prescaling with
+    ldi     AL, high(TIMER_TOP)     ; timer top defined by ICR0
+    out     ICR0H, AL               ; Set high byte of 16-bit value
+    ldi     AL, low(TIMER_TOP)      ; then continue with low byte
+    out     ICR0L, AL
 
     ; Setup everything else and start emulation
     code_setup_and_start_emulator()
@@ -73,26 +76,30 @@ main:
 
 loop:
     ; Waiting for timer overflow and samples output
-    code_sync_and_out(TIFR0, TOV0, OCR0AL, OCR0BL)
+    code_sync_and_out(TIFR0, TOV0, OCR0AL, OCR0BL) ; 6
 
     ; Update tone, noise and envelope generators
-    ldi     AL, U_STEP                ; 1
-    code_update_tone(a_period, a_counter, chA) ; max:24 min:12
-    code_update_tone(b_period, b_counter, chB) ; max:24 min:12
-    code_update_tone(c_period, c_counter, chC) ; max:24 min:12
-    code_reset_envelope()           ; max:12  min:3
-    code_update_noise_envelope()    ; max:324 min:100
-    code_apply_mixer()              ; max:6   min:6
+    ldi     AL, U_STEP              ; 1
+    code_update_tone(a_period, a_counter, chA) ; 24-12
+    code_update_tone(b_period, b_counter, chB) ; 24-12
+    code_update_tone(c_period, c_counter, chC) ; 24-12
+    code_reset_envelope()           ; 12-3
+    code_update_noise_envelope(16)  ; 167-63
+    code_apply_mixer()              ; 6
 
     ; Compute channels samples and stereo/mono output
-    ldi     ZL, low(P(amp_5bit))    ; 1   Get envelope amplitude from table
+    ldi     ZL, low(P(amp_4bit))    ; 1   Get envelope amplitude from table
     ldp     AL, e_stp               ; 3   using envelope step as index
     ldi     BL, low(P(amp_4bit))    ; 1
-    code_compute_sample(a_volume, chA, XL) ; max:9 min:7
-    code_compute_sample(b_volume, chB, BH) ; max:9 min:7
-    code_compute_sample(c_volume, chC, XH) ; max:9 min:7
-    code_compute_output(STEREO_ABC) ; max:3 min:3
+    code_compute_sample(a_volume, chA, XL) ; 9-7
+    code_compute_sample(b_volume, chB, BH) ; 9-7
+    code_compute_sample(c_volume, chC, XH) ; 9-7
+    code_compute_output(STEREO_ABC) ; 3
     rjmp    loop                    ; 2   Go to main loop next iteration
+
+    ; max cycles: 6+1+3*24+12+167+6+1+3+1+3*9+3+2=301
+    ; min cycles: 6+1+3*12+3+63+6+1+3+1+3*7+3+2=146
+    ; avg cycles: (301+146)/2=224
 
 ; ==============================================================================
 ; SRAM

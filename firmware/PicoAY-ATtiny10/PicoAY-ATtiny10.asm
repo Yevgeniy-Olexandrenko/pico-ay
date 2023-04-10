@@ -16,7 +16,7 @@
     .equ    U_STEP      = 8
     .equ    MAX_AMP     = 170
 
-    .include "../PicoAY-Blocks.asm"
+    .include "../PicoAY.asm"
 
 ; ==============================================================================
 ; FLASH

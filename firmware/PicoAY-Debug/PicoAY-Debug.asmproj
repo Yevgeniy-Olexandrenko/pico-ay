@@ -12,10 +12,10 @@
     <OutputDirectory>$(MSBuildProjectDirectory)\$(Configuration)</OutputDirectory>
     <Language>ASSEMBLY</Language>
     <AssemblyName>ATtiny85-Debug</AssemblyName>
-    <Name>PicoAY-ATtiny85-Debug</Name>
+    <Name>PicoAY-Debug</Name>
     <RootNamespace>ATtiny85-Debug</RootNamespace>
     <ToolchainFlavour>Native</ToolchainFlavour>
-    <EntryFile>$(MSBuildProjectDirectory)\PicoAY-ATtiny85.asm</EntryFile>
+    <EntryFile>$(MSBuildProjectDirectory)\PicoAY-Debug.asm</EntryFile>
     <KeepTimersRunning>true</KeepTimersRunning>
     <OverrideVtor>false</OverrideVtor>
     <CacheFlash>true</CacheFlash>
@@ -43,7 +43,7 @@
     <OutputType>Executable</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="PicoAY-ATtiny85.asm">
+    <Compile Include="PicoAY-Debug.asm">
       <SubType>Code</SubType>
     </Compile>
   </ItemGroup>

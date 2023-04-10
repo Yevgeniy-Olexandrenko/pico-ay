@@ -17,7 +17,7 @@
     .equ    TIMER_TOP   = 0xFF
     .equ    MAX_AMP     = 170
 
-    .include "../PicoAY-Blocks.asm"
+    .include "../PicoAY.asm"
 
 ; ==============================================================================
 ; FLASH

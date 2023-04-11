@@ -2,26 +2,12 @@
 ; GLOBAL DEFINES
 ; ==============================================================================
 
-    .equ    BAUD_RATE   = 57600
-
-; Compute timer top value and update step
-.ifdef TIMER_TOP
-.ifndef U_STEP
-    .equ    SAMPLE_RATE = (F_CPU / (TIMER_TOP + 1))
-    .equ    U_STEP      = (F_PSG / 8 / SAMPLE_RATE)
-    .if     U_STEP < 0x04 || U_STEP > 0x08
+    .equ    BAUD_RATE = 57600
+    .equ    SAMP_RATE = int(0.5 + (F_CPU / 1.0 / S_CYCLES))
+    .equ    U_STEP    = int(0.5 + (F_PSG / 8.0 / SAMP_RATE))
+    .if     U_STEP < 4 || U_STEP > 8
     .error  "Update step is out of range"
     .endif
-.endif
-.else
-.ifdef U_STEP
-    .if     U_STEP < 0x04 || U_STEP > 0x08
-    .error  "Update step is out of range"
-    .endif
-    .equ    SAMPLE_RATE = (F_PSG / 8 / U_STEP)
-    .equ    TIMER_TOP   = (F_CPU / SAMPLE_RATE - 1)
-.endif
-.endif
 
     .def    ZERO    = r16           ;
     .def    raddr   = r17           ;

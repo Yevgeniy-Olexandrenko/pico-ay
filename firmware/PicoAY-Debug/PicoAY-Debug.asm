@@ -12,10 +12,10 @@
 ; DEFINES
 ; ==============================================================================
 
-    .equ    F_CPU       = 8000000
-    .equ    F_PSG       = 1750000
-    .equ    TIMER_TOP   = 0xFF
-    .equ    MAX_AMP     = 170
+    .equ    F_CPU    = 8000000
+    .equ    F_PSG    = 1750000
+    .equ    S_CYCLES = 256
+    .equ    MAX_AMP  = 170
 
     .include "../PicoAY.asm"
 

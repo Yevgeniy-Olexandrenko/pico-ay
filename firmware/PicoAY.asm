@@ -1,3 +1,10 @@
+; Features to implement:
+; - Internal clock calibration using sofware UART in output mode
+; - Auto mute chip using WDT when there is no UART communication
+; - Disable all unused hardware to reduce power consumption
+; - PSG chip selection using dedicated pin (low - 0, high - 1)
+; - 16-bit mono output
+
 ; ==============================================================================
 ; GLOBAL DEFINES
 ; ==============================================================================
@@ -572,13 +579,13 @@ __compute_channel_amp VOLUME, CHANNEL, AMP
 .elif @0 == STEREO_ABC
     ; AVR8L:  3
     ; V2/V2E: 3
-    lsr     BH                      ; 1   Divide B channel sample by 2
+    lsr     BH                      ; 1   Divide B channel amplitude by 2
     add     XL, BH                  ; 1   Left  = Add B channel to A channel
     add     XH, BH                  ; 1   Right = Add B channel to C channel
 .elif @0 == STEREO_ACB
     ; AVR8L:  3
     ; V2/V2E: 3
-    lsr     XH                      ; 1   Divide C channel sample by 2
+    lsr     XH                      ; 1   Divide C channel amplitude by 2
     add     XL, XH                  ; 1   Left  = Add C channel to A channel
     add     XH, BH                  ; 1   Right = Add C channel to B channel
 .else

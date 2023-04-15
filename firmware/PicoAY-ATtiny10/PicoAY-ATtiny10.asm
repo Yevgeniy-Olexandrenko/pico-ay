@@ -88,12 +88,12 @@ loop:
     code_apply_mixer()                              ; 6
 
     ; Compute channels samples and stereo/mono output
-    code_compute_envelope_sample(16)                ; 4
     ldi     BL, low(P(amp_4bit))                    ; 1
-    code_compute_sample(a_volume, chA, XL)          ; 9-7
-    code_compute_sample(b_volume, chB, BH)          ; 9-7
-    code_compute_sample(c_volume, chC, XH)          ; 9-7
-    code_compute_output(STEREO_ABC)                 ; 3
+    code_compute_envelope_amp(16)                   ; 4
+    code_compute_channel_amp(a_volume, chA, XL)     ; 9-7
+    code_compute_channel_amp(b_volume, chB, BH)     ; 9-7
+    code_compute_channel_amp(c_volume, chC, XH)     ; 9-7
+    code_compute_output_sample(STEREO_ABC)          ; 3
     rjmp    loop                                    ; 2
 
     ; max cycles: 6+1+3*24+12+167+6+4+1+3*9+3+2=301 (+03%)

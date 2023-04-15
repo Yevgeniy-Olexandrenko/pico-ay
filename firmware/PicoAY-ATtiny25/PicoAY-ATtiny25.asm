@@ -50,31 +50,31 @@ main:
     cbi     DDRB,  PORTB2           ; Set PORTB2 as input
     sbi     PORTB, PORTB2           ; Enable pull-up resistor on PORTB2
     ldi     AL, M(ISC01)            ; Falling edge of INT0 generates an
-    out     MCUCR, AL               ; interrupt request
+    stio    MCUCR, AL               ; interrupt request
     ldi     AL, M(INT0)             ; Allow INT0 ISR execution
-    out     GIMSK, AL               ;
+    stio    GIMSK, AL               ;
 
     ; Setup Timer0 for CTC with OCRA top
     ldi     AL, M(WGM01)            ; CTC mode
-    out     TCCR0A, AL              ;
+    stio    TCCR0A, AL              ;
     ldi     AL, M(CS01)             ; F/8 prescaler
-    out     TCCR0B, AL              ;
+    stio    TCCR0B, AL              ;
     ldi     AL, ((S_CYCLES/8)-1)    ;
-    out     OCR0A, AL               ;
+    stio    OCR0A, AL               ;
 
     ; Setup Time1 for High Speed PWM 8-bit with 0xFF top
     sbi     DDRB, PORTB1            ; Set PORTB1 and PORTB4 as output
     sbi     DDRB, PORTB4            ; for PWM (OC1A and OC1B)
 ;   ldi     AL, M(PLLE) | M(PCKE)
-;   out     PLLCSR, AL
+;   stio    PLLCSR, AL
     ldi     AL, M(PWM1A) | M(COM1A1) | M(CS10)
-    out     TCCR1, AL
+    stio    TCCR1, AL
     ldi     AL, M(PWM1B) | M(COM1B1)
-    out     GTCCR, AL
+    stio    GTCCR, AL
     ldi     AL, 0xFF
-    out     OCR1C, AL
+    stio    OCR1C, AL
     ldi     AL, 0x7F
-    out     OCR1A, AL
+    stio    OCR1A, AL
 
     ; Setup everything else and start emulation
     code_setup_and_start_emulator()

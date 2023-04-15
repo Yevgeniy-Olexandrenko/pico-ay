@@ -46,8 +46,8 @@ main:
 
     ; Setup main CPU clock to 8 Mhz without prescaler
     ldi     AL, 0xD8                ; Write correct signature to Configuration
-    out     CCP, AL                 ; Change Protection register and set clock
-    out     CLKPSR, ZERO            ; division factor to 1 for 8 MHz
+    stio    CCP, AL                 ; Change Protection register and set clock
+    stio    CLKPSR, ZERO            ; division factor to 1 for 8 MHz
 
     ; Setup external interrupt INT0 on PB2 for UART RX
     cbi     DDRB,  PORTB2           ; Set PORTB2 as input
@@ -60,13 +60,13 @@ main:
     sbi     DDRB, PORTB0            ; Set PORTB0 and PORTB1 as output
     sbi     DDRB, PORTB1            ; for Fast PWM (OC0A and OC0B)
     ldi     AL, M(WGM01) | M(COM0A1) | M(COM0B1)
-    out     TCCR0A, AL              ; Clear OC0A/OC0B on compare match
+    stio    TCCR0A, AL              ; Clear OC0A/OC0B on compare match
     ldi     AL, M(WGM02) | M(WGM03)  | M(CS00)        
-    out     TCCR0B, AL              ; Fast PWM with no prescaling with
+    stio    TCCR0B, AL              ; Fast PWM with no prescaling with
     ldi     AL, high(S_CYCLES-1)    ; timer top defined by ICR0
-    out     ICR0H, AL               ; Set high byte of 16-bit value
+    stio    ICR0H, AL               ; Set high byte of 16-bit value
     ldi     AL, low(S_CYCLES-1)     ; then continue with low byte
-    out     ICR0L, AL
+    stio     ICR0L, AL
 
     ; Setup everything else and start emulation
     code_setup_and_start_emulator()

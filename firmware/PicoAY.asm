@@ -145,6 +145,58 @@ amp_5bit: __amp_5bit MAX_AMP
 envelopes: __envelopes STEPS
 
 ; ==============================================================================
+; CUSTOM INSTRUCTIONS
+; ==============================================================================
+
+; LOAD DATA FROM IO REGISTER ---------------------------------------------------
+.macro ldio
+    ; @0 destination CPU register
+    ; @1 source I/O register
+    ; AVR8L:  1
+    ; V2/V2E: 2-1
+.if @1 < 0x40 
+    in      @0, @1                  ; I/O register
+.elif @1 >= 0x60 && @1 < SRAM_START
+    lds     @0, @1                  ; Memory mapped register
+.else
+    .error "Invalid I/O register address"
+.endif
+.endmacro
+
+; STORE DATA TO IO REGISTER ----------------------------------------------------
+.macro stio
+    ; @0 destination I/O register
+    ; @1 source CPU register
+    ; AVR8L:  1
+    ; V2/V2E: 2-1
+.if @0 < 0x40 
+    out     @0, @1                  ; I/O register
+.elif @0 >= 0x60 && @0 < SRAM_START 
+    sts     @0, @1                  ; Memory mapped register
+.else
+    .error "Invalid I/O register address"
+.endif
+.endmacro
+
+; LOAD DATA FROM FLASH USING TABLE BASE AND DISPLACEMENT -----------------------
+.macro ldp
+    ; ZL table base or displasement
+    ; @0 destination register
+    ; @1 displacement or table base
+    ; AVR8L:  3
+    ; V2/V2E: 4
+#ifdef __CORE_AVR8L_0__
+    add     ZL, @1                  ; 1   Add table base with displacement
+    ld      @0, Z                   ; 2   Load indirrect from Z
+#elif __CORE_V2__ || __CORE_V2E__
+    add     ZL, @1                  ; 1   Add table base with displacement
+    lpm     @0, Z                   ; 3   Load indirrect from Z
+#else
+    .error "Unknown AVR core version"
+#endif
+.endmacro
+
+; ==============================================================================
 ; CODE BLOCKS
 ; ==============================================================================
 
@@ -163,10 +215,10 @@ sram_clear_loop:                    ;
 
     ; Set stack pointer
     ldi     AL, low(RAMEND)         ;
-    out     SPL, AL                 ;
+    stio    SPL, AL                 ;
 .ifdef SPH
     ldi     AL, high(RAMEND)        ;
-    out     SPH, AL                 ;
+    stio    SPH, AL                 ;
 .endif
 .endmacro
 #define code_setup_sram() \
@@ -194,23 +246,6 @@ __setup_data_access
 .endmacro
 #define code_setup_and_start_emulator() \
 __setup_and_start_emulator
-
-; LOAD DATA FROM FLASH USING TABLE BASE AND DISPLACEMENT -----------------------
-.macro ldp
-    ; ZL table base or displasement
-    ; @0 destination register
-    ; @1 displacement or table base
-    ; AVR8L:3/3 V2:4/4
-#ifdef __CORE_AVR8L_0__
-    add     ZL, @1                  ; 1   Add table base with displacement
-    ld      @0, Z                   ; 2   Load indirrect from Z
-#elif __CORE_V2__
-    add     ZL, @1                  ; 1   Add table base with displacement
-    lpm     @0, Z                   ; 3   Load indirrect from Z
-#else
-    .error "Unknown AVR core version"
-#endif
-.endmacro
 
 ; HANDLE UART RECEIVED DATA ACCORDING TO PROTOCOL ------------------------------
 .macro __handle_uart_data
@@ -255,7 +290,7 @@ __handle_uart_data
     ; Enter interrupt service routine
     push    YL                      ; 2   Delay loop counter
     push    YH                      ; 2   Data bits shift register
-    in      YH, SREG                ; 1   This ISR needs for 4+2 bytes of SRAM
+    ldio    YH, SREG                ; 1   This ISR needs for 4+2 bytes of SRAM
     push    YH                      ; 2   to save registers and return address
 
     ; Read data bits from LSB to MSB and wait for stop bit
@@ -278,7 +313,7 @@ stop_bit_loop:
 
     ; Exit interrupt service routine
     pop     YH                      ;     Restore used registers from stack
-    out     SREG, YH                ;
+    stio    SREG, YH                ;
     pop     YH                      ;
     pop     YL                      ;
     reti                            ;     Return from ISR
@@ -300,12 +335,12 @@ hw_uart_isr: __hw_uart_rx_isr
     ; @2 PWM channel A
     ; @3 PWM channel B
     ; AVR8L:6-4 V2:6-4
-    in      AL, @0                  ; 1   Check timer overflow flag
+    ldio    AL, @0                  ; 1   Check timer overflow flag
     sbrs    AL, @1                  ; 1|2 Skip next instruction if flag is set
     rjmp    loop                    ; 2   otherwise jump to the loop beginning
-    out     @0, AL                  ; 1   Clear timer overflow flag
-    out     @2, XL                  ; 1   Output L/R channel 8-bit samples or
-    out     @3, XH                  ; 1   mono channel 16-bit sample
+    stio    @0, AL                  ; 1   Clear timer overflow flag
+    stio    @2, XL                  ; 1   Output L/R channel 8-bit samples or
+    stio    @3, XH                  ; 1   mono channel 16-bit sample
 .endmacro
 #define code_sync_and_out(TOVF_R, TOVF_F, PWM_A, PWM_B) \
 __sync_and_out TOVF_R, TOVF_F, PWM_A, PWM_B

@@ -472,6 +472,20 @@ __update_noise_envelope STEPS
 #define code_apply_mixer() \
 __apply_mixer
 
+; COMPUTE ENVELOPE SAMPLE ------------------------------------------------------
+.macro __compute_envelope_sample
+    ; AL envelope sample
+    ; AVR8L:4 V2:5
+.if @0 == 16
+    ldi     ZL, low(P(amp_4bit))    ; 1
+.else
+    ldi     ZL, low(P(amp_5bit))    ; 1
+.endif
+    ldp     AL, e_stp               ; 3~4
+.endmacro
+#define code_compute_envelope_sample(STEPS) \
+__compute_envelope_sample STEPS
+
 ; COMPUTE CHANNEL SAMPLE -------------------------------------------------------
 .macro __compute_sample
     ; AL envelope sample

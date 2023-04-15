@@ -88,8 +88,7 @@ loop:
     code_apply_mixer()                              ; 6
 
     ; Compute channels samples and stereo/mono output
-    ldi     ZL, low(P(amp_4bit))                    ; 1
-    ldp     AL, e_stp                               ; 3
+    code_compute_envelope_sample(16)                ; 4
     ldi     BL, low(P(amp_4bit))                    ; 1
     code_compute_sample(a_volume, chA, XL)          ; 9-7
     code_compute_sample(b_volume, chB, BH)          ; 9-7
@@ -97,9 +96,9 @@ loop:
     code_compute_output(STEREO_ABC)                 ; 3
     rjmp    loop                                    ; 2
 
-    ; max cycles: 6+1+3*24+12+167+6+1+3+1+3*9+3+2=301 (+03%)
-    ; min cycles: 6+1+3*12+3+63+6+1+3+1+3*7+3+2=146   (-50%)
-    ; avg cycles: (301+146)/2=224                     (-23%)
+    ; max cycles: 6+1+3*24+12+167+6+4+1+3*9+3+2=301 (+03%)
+    ; min cycles: 6+1+3*12+3+63+6+4+1+3*7+3+2=146   (-50%)
+    ; avg cycles: (301+146)/2=224                   (-23%)
     ; ovf period: 224*1.3=291, chosen 292
 
 ; ==============================================================================

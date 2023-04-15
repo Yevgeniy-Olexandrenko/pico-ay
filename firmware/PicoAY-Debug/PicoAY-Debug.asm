@@ -1,14 +1,14 @@
 ;                                                                              ;
 ; ATtiny10 simulation:                    Arduino Nano                         ;
 ; --------------------                 +---+--------+---+                      ;
-; UART_RX   -> SW_RX                   |   |Mini USB|   |                      ;
+; UART_RX   -> SW_RX / HW_RX           |   |Mini USB|   |                      ;
 ; PWM_OUT_L -> T1_PWM_A                |   +--------+   |                      ;
 ; PWM_OUT_R -> T1_PWM_B          PB5 --| D13        D12 |-- PB4                ;
 ; MCU clock -> Int 8 Mhz             --| 3V3        D11 |-- PB3 (T2_PWM_A)     ;
 ;                                    --| REF        D10 |-- PB2 (T1_PWM_B)     ;
 ; ATtiny25 simulation:           PC0 --| A0          D9 |-- PB1 (T1_PWM_A)     ;
 ; --------------------           PC1 --| A1          D8 |-- PB0                ;
-; UART_RX   -> SW_RX             PC2 --| A2          D7 |-- PD7                ;
+; UART_RX   -> SW_RX / HW_RX     PC2 --| A2          D7 |-- PD7                ;
 ; PWM_OUT_L -> T2_PWM_A          PC3 --| A3          D6 |-- PD6 (T0_PWM_A)     ;
 ; PWM_OUT_R -> T2_PWM_B          PC4 --| A4          D5 |-- PD5 (T0_PWM_B)     ;
 ; MCU clock -> Ext 16 Mhz        PC5 --| A5          D4 |-- PD4                ;
@@ -16,8 +16,8 @@
 ;                                    --| A7          D2 |-- PD2 (SW_RX)        ;
 ;                                VCC --| 5V         GND |-- GND                ;
 ;                       (/RESET) PC6 --| RST        RST |-- PC6 (/RESET)       ;
-;                                GND --| GND         D1 |-- PD1                ;
-;                                    --| VIN         D0 |-- PD0 (HW_RX)        ;
+;                                GND --| GND         D0 |-- PD0 (HW_RX)        ;
+;                                    --| VIN         D1 |-- PD1                ;
 ;                                      |   +--------+   |                      ;
 ;                                      |   |  ICSP  |   |                      ;
 ;                                      +---+--------+---+                      ;
@@ -26,9 +26,6 @@
 ; ==============================================================================
 ; DEFINES
 ; ==============================================================================
-
-//#define SIM_T10
-//#define SIM_T25
 
 #if defined(SIM_T10)
     .equ    F_CPU     = 8000000
@@ -55,6 +52,8 @@
     rjmp    main
     .org    INT0addr
     rjmp    sw_uart_rx_isr
+    .org    URXCaddr
+    rjmp    hw_uart_rx_isr
 
 ; ==============================================================================
 ; DATA
@@ -75,13 +74,26 @@ main:
     code_setup_sram()
     code_setup_data_access()
 
-    ; Setup external interrupt INT0 on PB2 for UART RX
+    ; Setup external interrupt INT0 on PD2 for software UART RX
     cbi     DDRD,  PORTD2           ; Set PORTD2 as input
     sbi     PORTD, PORTD2           ; Enable pull-up resistor on PORTD2
     ldi     AL, M(ISC01)            ; Falling edge of INT0 generates an
     stio    EICRA, AL               ; interrupt request
     ldi     AL, M(INT0)             ; Allow INT0 ISR execution
     stio    EIMSK, AL               ;
+
+    ; Setup hardware UART RX
+    .equ    UBRR = (int(0.5 + F_CPU / 8.0 / BAUD_RATE) - 1)
+    ldi     AL, high(UBRR)          ;
+    stio    UBRR0H, AL              ;
+    ldi     AL, low(UBRR)           ;
+    stio    UBRR0L, AL              ;
+    ldi     AL, M(U2X0)             ;
+    stio    UCSR0A, AL              ;
+    ldi     AL, M(RXCIE0) | M(RXEN0)
+    stio    UCSR0B, AL              ;
+    ldi     AL, M(UCSZ01) | M(UCSZ00)
+    stio    UCSR0C, AL              ;
 
 #if defined(SIM_T10)
     ; Setup Timer1 for Fast PWM 8-bit with ICR1 top
@@ -118,6 +130,9 @@ main:
 
     ; Software UART implementation
     code_sw_uart_rx_isr(PIND, PORTD2)
+
+    ; Hardware UART implementation
+    code_hw_uart_rx_isr(UDR0)
 
 loop:
     ; Waiting for timer overflow and samples output

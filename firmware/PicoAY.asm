@@ -286,7 +286,7 @@ __handle_uart_data
 ; SOFTWARE UART DATA RECEIVE ISR -----------------------------------------------
 .macro __sw_uart_rx_isr
     ; @0 mcu port for UART RX input
-    ; @1 mcu pin number in port for UART RX
+    ; @1 mcu port bit number for UART RX pin
 
     .equ    BIT_DURATION = (F_CPU / BAUD_RATE)
     .equ    BIT_DELAY_10 = int((1.0 * BIT_DURATION - 5 + 1.5) / 3)
@@ -331,10 +331,21 @@ sw_uart_rx_isr: __sw_uart_rx_isr PORT, PORTBIT
 
 ; HARDWARE UART DATA RECEIVE ISR -----------------------------------------------
 .macro __hw_uart_rx_isr
-    ; TODO
+    ; @0 mcu register for UART RX input
+    push    YL                      ;
+    push    YH                      ;
+    ldio    YH, SREG                ;
+    push    YH                      ;
+    ldio    YH, @0                  ;
+    code_handle_uart_data()         ;
+    pop     YH                      ;
+    stio    SREG, YH                ;
+    pop     YH                      ;
+    pop     YL                      ;
+    reti                            ;
 .endmacro
-#define code_hw_uart_rx_isr() \
-hw_uart_isr: __hw_uart_rx_isr
+#define code_hw_uart_rx_isr(UART) \
+hw_uart_rx_isr: __hw_uart_rx_isr UART
 
 ; SYNCHRONIZE IN TIME AND OUTPUT PREVIOUSLY COMPUTED RESULT --------------------
 .macro __sync_and_out

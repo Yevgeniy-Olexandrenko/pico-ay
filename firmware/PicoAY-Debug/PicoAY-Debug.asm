@@ -1,21 +1,48 @@
 ;                                                                              ;
-;                                   ATtiny85                                   ;
-;                                  +--------+                                  ;
-;                   (/RESET) PB5 --|*1    8 |-- VCC                            ;
-;                            PB3 --| 2    7 |-- PB2 (UART_RX)                  ;
-;                            PB4 --| 3    6 |-- PB1 (PWM_OUT_R)                ;
-;                            GND --| 4    5 |-- PB0 (PWM_OUT_L)                ;
-;                                  +--------+                                  ;
+; ATtiny10 simulation:                    Arduino Nano                         ;
+; --------------------                 +---+--------+---+                      ;
+; UART_RX   -> SW_RX                   |   |Mini USB|   |                      ;
+; PWM_OUT_L -> T1_PWM_A                |   +--------+   |                      ;
+; PWM_OUT_R -> T1_PWM_B          PB5 --| D13        D12 |-- PB4                ;
+; MCU clock -> Int 8 Mhz             --| 3V3        D11 |-- PB3 (T2_PWM_A)     ;
+;                                    --| REF        D10 |-- PB2 (T1_PWM_B)     ;
+; ATtiny25 simulation:           PC0 --| A0          D9 |-- PB1 (T1_PWM_A)     ;
+; --------------------           PC1 --| A1          D8 |-- PB0                ;
+; UART_RX   -> SW_RX             PC2 --| A2          D7 |-- PD7                ;
+; PWM_OUT_L -> T2_PWM_A          PC3 --| A3          D6 |-- PD6 (T0_PWM_A)     ;
+; PWM_OUT_R -> T2_PWM_B          PC4 --| A4          D5 |-- PD5 (T0_PWM_B)     ;
+; MCU clock -> Ext 16 Mhz        PC5 --| A5          D4 |-- PD4                ;
+;                                    --| A6          D3 |-- PD3 (T2_PWM_B)     ;
+;                                    --| A7          D2 |-- PD2 (SW_RX)        ;
+;                                VCC --| 5V         GND |-- GND                ;
+;                       (/RESET) PC6 --| RST        RST |-- PC6 (/RESET)       ;
+;                                GND --| GND         D1 |-- PD1                ;
+;                                    --| VIN         D0 |-- PD0 (HW_RX)        ;
+;                                      |   +--------+   |                      ;
+;                                      |   |  ICSP  |   |                      ;
+;                                      +---+--------+---+                      ;
 ;                                                                              ;
 
 ; ==============================================================================
 ; DEFINES
 ; ==============================================================================
 
-    .equ    F_CPU    = 8000000
-    .equ    F_PSG    = 1750000
-    .equ    S_CYCLES = 256
-    .equ    MAX_AMP  = 170
+//#define SIM_T10
+//#define SIM_T25
+
+#if defined(SIM_T10)
+    .equ    F_CPU     = 8000000
+    .equ    F_PSG     = 1750000
+    .equ    S_CYCLES  = 292
+    .equ    MAX_AMP   = 170
+    .equ    ENV_STEPS = 16
+#elif defined(SIM_T25)
+    .equ    F_CPU     = 16000000
+    .equ    F_PSG     = 1750000
+    .equ    S_CYCLES  = 432
+    .equ    MAX_AMP   = 170
+    .equ    ENV_STEPS = 32
+#endif
 
     .include "../PicoAY.asm"
 
@@ -35,8 +62,10 @@
 
     data_reg_mask()
     data_amp_4bit(MAX_AMP)
+.if ENV_STEPS == 32
     data_amp_5bit(MAX_AMP)
-    data_envelopes(32)
+.endif
+    data_envelopes(ENV_STEPS)
 
 ; ==============================================================================
 ; CODE
@@ -47,49 +76,74 @@ main:
     code_setup_data_access()
 
     ; Setup external interrupt INT0 on PB2 for UART RX
-    cbi     DDRB,  PORTB2           ; Set PORTB2 as input
-    sbi     PORTB, PORTB2           ; Enable pull-up resistor on PORTB2
+    cbi     DDRD,  PORTD2           ; Set PORTD2 as input
+    sbi     PORTD, PORTD2           ; Enable pull-up resistor on PORTD2
     ldi     AL, M(ISC01)            ; Falling edge of INT0 generates an
-    out     MCUCR, AL               ; interrupt request
+    stio    EICRA, AL               ; interrupt request
     ldi     AL, M(INT0)             ; Allow INT0 ISR execution
-    out     GIMSK, AL               ;
+    stio    EIMSK, AL               ;
 
-    ; Setup Timer0 for Fast PWM 8-bit with 0xFF top
-    sbi     DDRB, PORTB0            ; Set PORTB0 and PORTB1 as output
-    sbi     DDRB, PORTB1            ; for Fast PWM (OC0A and OC0B)
-    ldi     AL, M(WGM00) | M(WGM01) | M(COM0A1) | M(COM0B1)
-    out     TCCR0A, AL              ; Clear OC0A/OC0B on compare match
-    ldi     AL, M(CS00)        
-    out     TCCR0B, AL              ; Fast PWM with no prescaling
+#if defined(SIM_T10)
+    ; Setup Timer1 for Fast PWM 8-bit with ICR1 top
+    sbi     DDRB, PORTB1            ; Set PORTB1 and PORTB2 as output
+    sbi     DDRB, PORTB2            ; for Fast PWM (OC1A and OC1B)
+    ldi     AL, M(WGM11) | M(COM1A1) | M(COM1B1)
+    stio    TCCR1A, AL              ; Clear OC1A/OC1B on compare match
+    ldi     AL, M(WGM12) | M(WGM13)  | M(CS10)
+    stio    TCCR1B, AL              ; Fast PWM with no prescaling with
+    ldi     AL, high(S_CYCLES-1)    ; timer top defined by ICR1
+    stio    ICR1H, AL               ; Set high byte of 16-bit value
+    ldi     AL, low(S_CYCLES-1)     ; then continue with low byte
+    stio    ICR1L, AL
+#elif defined(SIM_T25)
+    ; Setup Timer0 for CTC with OCRA top
+    ldi     AL, M(WGM01)            ; CTC mode
+    stio    TCCR0A, AL              ;
+    ldi     AL, M(CS01)             ; F/8 prescaler
+    stio    TCCR0B, AL              ;
+    ldi     AL, ((S_CYCLES/8)-1)    ;
+    stio    OCR0A, AL               ;
+
+    ; Setup Timer2 for Fast PWM 8-bit with 0xFF top
+    sbi     DDRB, PORTB3            ; Set PORTB3 and PORTD3 as output
+    sbi     DDRD, PORTD3            ; for Fast PWM (OC0A and OC0B)
+    ldi     AL, M(WGM20) | M(WGM21) | M(COM2A1) | M(COM2B1)
+    stio    TCCR2A, AL              ; Clear OC0A/OC0B on compare match
+    ldi     AL, M(CS00)             ;
+    stio    TCCR2B, AL              ; Fast PWM with no prescaling
+#endif
 
     ; Setup everything else and start emulation
     code_setup_and_start_emulator()
 
     ; Software UART implementation
-    code_sw_uart_rx_isr(PINB, PORTB2)
+    code_sw_uart_rx_isr(PIND, PORTD2)
 
 loop:
     ; Waiting for timer overflow and samples output
-    code_sync_and_out(TIFR, TOV0, OCR0A, OCR0B)
+#if defined(SIM_T10)
+    code_sync_and_out(TIFR1, TOV1, OCR1AL, OCR1BL)  ; 6
+#elif defined(SIM_T25)
+    code_sync_and_out(TIFR0, TOV0, OCR2A, OCR2B)    ; 6
+#endif
 
     ; Update tone, noise and envelope generators
-    ldi     AL, U_STEP                ; 1
-    code_update_tone(a_period, a_counter, chA) ; max:24 min:12
-    code_update_tone(b_period, b_counter, chB) ; max:24 min:12
-    code_update_tone(c_period, c_counter, chC) ; max:24 min:12
-    code_reset_envelope()           ; max:12  min:3
-    code_update_noise_envelope(32)  ; max:324 min:100
-    code_apply_mixer()              ; max:6   min:6
+    ldi     AL, U_STEP                              ; 1
+    code_update_tone(a_period, a_counter, chA)      ; 30-18
+    code_update_tone(b_period, b_counter, chB)      ; 30-18
+    code_update_tone(c_period, c_counter, chC)      ; 30-18
+    code_reset_envelope()                           ; 16-3
+    code_update_noise_envelope(ENV_STEPS)           ; TODO: 324-116 / ?-?
+    code_apply_mixer()                              ; 7
 
     ; Compute channels samples and stereo/mono output
-    ldi     ZL, low(P(amp_5bit))    ; 1   Get envelope amplitude from table
-    ldp     AL, e_stp               ; 3   using envelope step as index
-    ldi     BL, low(P(amp_4bit))    ; 1
-    code_compute_sample(a_volume, chA, XL) ; max:9 min:7
-    code_compute_sample(b_volume, chB, BH) ; max:9 min:7
-    code_compute_sample(c_volume, chC, XH) ; max:9 min:7
-    code_compute_output(STEREO_ABC) ; max:3 min:3
-    rjmp    loop                    ; 2   Go to main loop next iteration
+    code_compute_envelope_sample(ENV_STEPS)         ; 5
+    ldi     BL, low(P(amp_4bit))                    ; 1
+    code_compute_sample(a_volume, chA, XL)          ; 11-8
+    code_compute_sample(b_volume, chB, BH)          ; 11-8
+    code_compute_sample(c_volume, chC, XH)          ; 11-8
+    code_compute_output(STEREO_ABC)                 ; 3
+    rjmp    loop                                    ; 2
 
 ; ==============================================================================
 ; SRAM

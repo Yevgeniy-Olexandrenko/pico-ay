@@ -2,8 +2,8 @@
 ; - Internal clock calibration using sofware UART in output mode
 ; - Auto mute chip using WDT when there is no UART communication
 ; - Disable all unused hardware to reduce power consumption
-; - PSG chip selection using dedicated pin (low - 0, high - 1)
-; - 16-bit mono output
+; - PSG chip selection using dedicated pin (high - Chip #0, low - Chip #1)
+; - PSG stereo mode selection using dedicated pin (high - ABC, low - ACB)
 
 ; ==============================================================================
 ; GLOBAL DEFINES

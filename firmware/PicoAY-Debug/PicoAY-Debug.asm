@@ -108,24 +108,25 @@ main:
     ldi     AL, low(S_CYCLES-1)     ; then continue with low byte
     stio    ICR1L, AL
 #elif defined(SIM_T25)
-    ; Setup Timer0 for CTC with OCRA top
-    ldi     AL, M(WGM01)            ; CTC mode
+    ; Setup Timer0 for Phase Correct PWM 8-bit with OCRA top
+    ldi     AL, M(WGM00)            ;
     stio    TCCR0A, AL              ;
-    ldi     AL, M(CS01)             ; F/8 prescaler
+    ldi     AL, M(WGM02) | M(CS00)  ;
     stio    TCCR0B, AL              ;
-    ldi     AL, ((S_CYCLES/8)-1)    ;
+    ldi     AL, ((S_CYCLES/2)-1)    ;
     stio    OCR0A, AL               ;
 
     ; Setup Timer2 for Fast PWM 8-bit with 0xFF top
     sbi     DDRB, PORTB3            ; Set PORTB3 and PORTD3 as output
-    sbi     DDRD, PORTD3            ; for Fast PWM (OC0A and OC0B)
+    sbi     DDRD, PORTD3            ; for Fast PWM (OC2A and OC2B)
     ldi     AL, M(WGM20) | M(WGM21) | M(COM2A1) | M(COM2B1)
-    stio    TCCR2A, AL              ; Clear OC0A/OC0B on compare match
-    ldi     AL, M(CS00)             ;
+    stio    TCCR2A, AL              ; Clear OC2A/OC2B on compare match
+    ldi     AL, M(CS20)             ;
     stio    TCCR2B, AL              ; Fast PWM with no prescaling
 #endif
 
     ; Setup everything else and start emulation
+    sbi     DDRB, PORTB5            ; Set PORTB5 as output (onboard LED)
     code_setup_and_start_emulator()
 
     ; Software UART implementation
@@ -136,11 +137,13 @@ main:
 
 loop:
     ; Waiting for timer overflow and samples output
+    cbi     PORTB, PORTB5
 #if defined(SIM_T10)
     code_sync_and_out(TIFR1, TOV1, OCR1AL, OCR1BL)  ; 6
 #elif defined(SIM_T25)
     code_sync_and_out(TIFR0, TOV0, OCR2A, OCR2B)    ; 6
 #endif
+    sbi     PORTB, PORTB5
 
     ; Update tone, noise and envelope generators
     ldi     AL, U_STEP                              ; 1

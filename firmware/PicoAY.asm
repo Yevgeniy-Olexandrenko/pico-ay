@@ -12,7 +12,7 @@
     .equ    BAUD_RATE = 57600
     .equ    SAMP_RATE = int(0.5 + (F_CPU / 1.0 / S_CYCLES))
     .equ    U_STEP    = int(0.5 + (F_PSG / 8.0 / SAMP_RATE))
-    .if     U_STEP < 4 || U_STEP > 8
+    .if     U_STEP < 1 || U_STEP > 8
     .error  "Update step is out of range"
     .endif
 

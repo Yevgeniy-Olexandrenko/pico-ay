@@ -126,7 +126,9 @@ main:
 #endif
 
     ; Setup everything else and start emulation
-    sbi     DDRB, PORTB5            ; Set PORTB5 as output (onboard LED)
+    sbi     DDRB, PORTB0            ; Set PORTB4 as output
+    sbi     DDRB, PORTB4            ; Set PORTB4 as output
+    sbi     DDRB, PORTB5            ; Set PORTB5 as output
     code_setup_and_start_emulator()
 
     ; Software UART implementation
@@ -137,13 +139,11 @@ main:
 
 loop:
     ; Waiting for timer overflow and samples output
-    cbi     PORTB, PORTB5
 #if defined(SIM_T10)
     code_sync_and_out(TIFR1, TOV1, OCR1AL, OCR1BL)  ; 6
 #elif defined(SIM_T25)
     code_sync_and_out(TIFR0, TOV0, OCR2A, OCR2B)    ; 6
 #endif
-    sbi     PORTB, PORTB5
 
     ; Update tone, noise and envelope generators
     ldi     AL, U_STEP                              ; 1

@@ -288,13 +288,13 @@ __handle_uart_data
     ; @0 mcu port for UART RX input
     ; @1 mcu port bit number for UART RX pin
 
-    .equ    BIT_DURATION = (F_CPU / BAUD_RATE)
-    .equ    BIT_DELAY_10 = int((1.0 * BIT_DURATION - 5 + 1.5) / 3)
-    .equ    BIT_DELAY_15 = int((1.5 * BIT_DURATION - 9 + 1.5) / 3)
+    .equ    BIT_DELAY_10 = int((1.0 * F_CPU / BAUD_RATE - 5 + 1.5) / 3)
+    .equ    BIT_DELAY_15 = int((1.5 * F_CPU / BAUD_RATE - 9 - 9 + 1.5) / 3)
 
     ; It's good to have the delay between received bytes about 200 microseconds.
     ; In this case the receiver will be able to handle new byte properly.
 
+    cbi     PORTB, PORTB4
     ; Enter interrupt service routine
     push    YL                      ; 2   Delay loop counter
     push    YH                      ; 2   Data bits shift register
@@ -304,26 +304,45 @@ __handle_uart_data
     ; Read data bits from LSB to MSB and wait for stop bit
     ldi     YL, BIT_DELAY_15        ; 1   Delay for 1.5 bit (0.5*START+1.0*DATA) 
     ldi     YH, 0x80                ; 1   Bit shift counter
+
+    cbi     PORTB, PORTB5
+
 data_bit_loop:
+
     subi    YL, 1                   ; 1   Decrement and clear carry
     brne    data_bit_loop           ; 1|2 Go to next iteration
     ldi     YL, BIT_DELAY_10        ; 1   Load delay for next bit
     sbic    @0, @1                  ; 1|2 Check UART RX PIN
     sec                             ; 1   Set carry if RX is HIGH
     ror     YH                      ; 1   Shift register loading carry to bit7
+
+    sbi     PINB, PORTB5
+
     brcc    data_bit_loop           ; 1|2 Loop through shift register
 stop_bit_loop:
     dec     YL                      ; 1   Stop bit delay loop
     brne    stop_bit_loop           ; 1|2 Go to next iteration
 
+    sbi     PORTB, PORTB5
+    cbi     PORTB, PORTB0
+
     ; Handle received byte in register YH
     code_handle_uart_data()
 
+    sbi     PORTB, PORTB0
+
     ; Exit interrupt service routine
+
+        ldi     YH, M(INTF0)
+        stio    EIFR, YH
+
     pop     YH                      ;     Restore used registers from stack
     stio    SREG, YH                ;
     pop     YH                      ;
     pop     YL                      ;
+
+    sbi     PORTB, PORTB4
+
     reti                            ;     Return from ISR
 .endmacro
 #define code_sw_uart_rx_isr(PORT, PORTBIT) \

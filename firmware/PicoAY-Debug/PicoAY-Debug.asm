@@ -51,9 +51,11 @@
     .org    0x0000
     rjmp    main
     .org    INT0addr
-    rjmp    sw_uart_rx_isr
+    rjmp    sw_uart_rx_sbit_isr
     .org    URXCaddr
     rjmp    hw_uart_rx_isr
+    .org    ADCCaddr
+    rjmp    sw_uart_rx_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -74,13 +76,17 @@ main:
     code_setup_sram()
     code_setup_data_access()
 
-    ; Setup external interrupt INT0 on PD2 for software UART RX
+    ; Setup external interrupt INT0 on PD2 (RX) for software UART
     cbi     DDRD,  PORTD2           ; Set PORTD2 as input
     sbi     PORTD, PORTD2           ; Enable pull-up resistor on PORTD2
     ldi     AL, M(ISC01)            ; Falling edge of INT0 generates an
     stio    EICRA, AL               ; interrupt request
     ldi     AL, M(INT0)             ; Allow INT0 ISR execution
     stio    EIMSK, AL               ;
+
+    ; Setup ADC to use as background delay for software UART
+    ldi     AL, M(ADEN) | M(ADSC)   ; Enable ADC, set min prescaler and start
+    stio    ADCSRA, AL              ; conversion to achieve stable 13 cycles
 
     ; Setup hardware UART RX
     .equ    UBRR = (int(0.5 + F_CPU / 8.0 / BAUD_RATE) - 1)
@@ -132,7 +138,78 @@ main:
     code_setup_and_start_emulator()
 
     ; Software UART implementation
-    code_sw_uart_rx_isr(PIND, PORTD2)
+    ;code_sw_uart_rx_isr(PIND, PORTD2)
+
+    .equ    BIT_DURATION = int(1.0  * F_CPU / BAUD_RATE + 0.5)
+    .equ    ADC_DURATION = int(13.0 * F_CPU / 1000000   + 0.5)
+    .equ    BIT_EX_DELAY = int((BIT_DURATION - ADC_DURATION - 18 + 1.5) / 3)
+
+    ; Software UART implementation (start bit detection)
+sw_uart_rx_sbit_isr:
+    push    YH                      ;
+    ldio    YH, SREG                ;
+    push    YH                      ;
+    ;
+.if F_CPU == 16000000               ; Delay: 32 * 13 = 416 = 1.5 * 277.3 cycles
+    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2) | M(ADPS0)
+.elif F_CPU == 8000000              ; Delay: 16 * 13 = 208 = 1.5 * 138.7 cycles
+    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
+.else
+    .error "CPU clock must be 16 or 8 Mhz"
+.endif
+    stio    ADCSRA, AL              ; Set prescale and start conversion
+    stio    EIMSK, ZERO             ; Disable INT0 ISR execution
+    ldi     YH, 0x80                ; Init UART data shift register
+    sts     uart_data, YH
+    ;
+    pop     YH                      ;
+    stio    SREG, YH                ;
+    pop     YH                      ;
+    reti                            ;
+
+    ; Software UART implementation (data bit receiving)
+sw_uart_rx_dbit_isr:
+    push    YL                      ; 2
+    push    YH                      ; 2
+    ldio    YH, SREG                ; 1~2
+    push    YH                      ; 2
+    ;
+    lds     YH, uart_data           ; 1~2
+    clc                             ; 1
+    sbic    PIND, PORTD2            ; 1|2
+    sec                             ; 1
+    ror     YH                      ; 1
+    brcs    handle_uart_data        ; 1|2
+    sts     uart_data, YH           ; 1~2
+    ;
+    ldi     YH, BIT_EX_DELAY        ; 1
+data_bit_loop:
+    dec     YH                      ; 1
+    brne    data_bit_loop           ; 1
+    ;
+.if F_CPU == 16000000               ; Delay: 16*13=208, extra delay: 277-208=69
+    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
+.elif F_CPU == 8000000              ; Delay: 8*13=104,  extra delay: 138-104=34
+    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS1) | M(ADPS0)
+.else
+    .error "CPU clock must be 16 or 8 Mhz"
+.endif
+    stio    ADCSRA, AL              ; Set prescale and start conversion
+    rjmp    exit_isr
+    ;
+handle_uart_data:
+    code_handle_uart_data()         ;
+    ldi     YH, M(INTF0)            ; Clear any pending INT0 ISR
+    stio    EIFR, YH                ;
+    ldi     YH, M(INT0)             ; Allow INT0 ISR execution
+    stio    EIMSK, YH               ;
+    ;
+exit_isr:
+    pop     YH                      ;
+    stio    SREG, YH                ;
+    pop     YH                      ;
+    pop     YL                      ;
+    reti                            ;
 
     ; Hardware UART implementation
     code_hw_uart_rx_isr(UDR0)
@@ -170,3 +247,4 @@ loop:
 .dseg
     .org    SRAM_START
     sram_psg_regs_and_state()
+uart_data: .byte 1

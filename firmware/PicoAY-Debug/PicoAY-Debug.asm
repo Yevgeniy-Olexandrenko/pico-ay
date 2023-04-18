@@ -56,7 +56,6 @@
     rjmp    hw_uart_rx_isr
     .org    ADCCaddr
     rjmp    sw_uart_rx_dbit_isr
-;;    rjmp    adc_restart
 
 ; ==============================================================================
 ; DATA
@@ -136,124 +135,16 @@ main:
 sbi DDRB, PORTB0 ; Set PORTB4 as output
 sbi DDRB, PORTB4 ; Set PORTB4 as output
 sbi DDRB, PORTB5 ; Set PORTB5 as output
-#if 0
-.if F_CPU == 16000000               ; Delay: 32 * 13 = 416 = 1.5 * 277.3 cycles
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2) | M(ADPS0)
-.elif F_CPU == 8000000              ; Delay: 16 * 13 = 208 = 1.5 * 138.7 cycles
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
-.else
-    .error "CPU clock must be 16 or 8 Mhz"
-.endif
-    stio    ADCSRA, YH              ; Set prescale and start conversion
-#endif
-
     code_setup_and_start_emulator()
 
-#if 0
-adc_restart:
-cbi PORTB, PORTB4
-sbi PORTB, PORTB5
-
-.if F_CPU == 16000000               ; Delay: 32 * 13 = 416 = 1.5 * 277.3 cycles
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2) | M(ADPS0)
-.elif F_CPU == 8000000              ; Delay: 16 * 13 = 208 = 1.5 * 138.7 cycles
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
-.else
-    .error "CPU clock must be 16 or 8 Mhz"
-.endif
-    stio    ADCSRA, YH              ; Set prescale and start conversion
-
-sbi PORTB, PORTB5
-sbi PORTB, PORTB4
-    reti
-#endif
-
     ; Software UART implementation
-    ;code_sw_uart_rx_isr(PIND, PORTD2)
-
-    .equ    BIT_DURATION = int(1.0  * F_CPU / BAUD_RATE + 0.5) ; 278
-    .equ    ADC_DURATION = int(13.0 * F_CPU / 1000000   + 0.5)
-    .equ    BIT_EX_DELAY = int((BIT_DURATION - ADC_DURATION - (18 + 18) + 1.5) / 3)
-
-    ; Software UART implementation (start bit detection)
-sw_uart_rx_sbit_isr:
-cbi PORTB, PORTB4
-    push    YH                      ;
-    ldio    YH, SREG                ;
-    push    YH                      ;
-    ;
-.if F_CPU == 16000000               ; Delay: 32 * 13 = 416 = 1.5 * 277.3 cycles
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2) | M(ADPS0)
-.elif F_CPU == 8000000              ; Delay: 16 * 13 = 208 = 1.5 * 138.7 cycles
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
-.else
-    .error "CPU clock must be 16 or 8 Mhz"
-.endif
-    stio    ADCSRA, YH              ; Set prescale and start conversion
-    stio    EIMSK, ZERO             ; Disable INT0 ISR execution
-    ldi     YH, 0x80                ; Init UART data shift register
-    sts     uart_data, YH
-cbi PORTB, PORTB5
-    ;
-    pop     YH                      ;
-    stio    SREG, YH                ;
-    pop     YH                      ;
-    reti                            ;
-
-    ; Software UART implementation (data bit receiving)
-sw_uart_rx_dbit_isr:
-    push    YL                      ; 2
-    push    YH                      ; 2
-    ldio    YH, SREG                ; 1~2
-    push    YH                      ; 2
-    ;
-    lds     YH, uart_data           ; 1~2
-    clc                             ; 1
-    sbic    PIND, PORTD2            ; 1|2
-    sec                             ; 1
-    ror     YH                      ; 1
-sbi PINB, PORTB5
-    brcs    handle_uart_data        ; 1|2
-    sts     uart_data, YH           ; 1~2
-    ;
-    ldi     YH, BIT_EX_DELAY        ; 1
-data_bit_loop:
-    dec     YH                      ; 1
-    brne    data_bit_loop           ; 1
-    ;
-.if F_CPU == 16000000               ; Delay: 16*13=208, extra delay: 277-208=69
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
-.elif F_CPU == 8000000              ; Delay: 8*13=104,  extra delay: 138-104=34
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS1) | M(ADPS0)
-.else
-    .error "CPU clock must be 16 or 8 Mhz"
-.endif
-    stio    ADCSRA, YH              ; Set prescale and start conversion
-    rjmp    exit_isr
-    ;
-handle_uart_data:
-sbi PORTB, PORTB5
-cbi PORTB, PORTB0
-    code_handle_uart_data()         ;
-sbi PORTB, PORTB0
-    ldi     YH, M(INTF0)            ; Clear any pending INT0 ISR
-    stio    EIFR, YH                ;
-    ldi     YH, M(INT0)             ; Allow INT0 ISR execution
-    stio    EIMSK, YH               ;
-    ;
-exit_isr:
-    pop     YH                      ;
-    stio    SREG, YH                ;
-    pop     YH                      ;
-    pop     YL                      ;
-sbi PORTB, PORTB4
-    reti                            ;
+    code_sw_uart_rx_sbit_isr()
+    code_sw_uart_rx_dbit_isr(PIND, PORTD2)
 
     ; Hardware UART implementation
     code_hw_uart_rx_isr(UDR0)
 
 loop:
-#if 1
     ; Waiting for timer overflow and samples output
 #if defined(SIM_T10)
     code_sync_and_out(TIFR1, TOV1, OCR1AL, OCR1BL)  ; 6
@@ -277,7 +168,6 @@ loop:
     code_compute_channel_amp(b_volume, chB, BH)     ; 11-8
     code_compute_channel_amp(c_volume, chC, XH)     ; 11-8
     code_compute_output_sample(STEREO_ABC)          ; 3
-#endif
     rjmp    loop                                    ; 2
 
 ; ==============================================================================
@@ -287,4 +177,3 @@ loop:
 .dseg
     .org    SRAM_START
     sram_psg_regs_and_state()
-uart_data: .byte 1

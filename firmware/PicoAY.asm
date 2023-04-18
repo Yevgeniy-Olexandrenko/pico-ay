@@ -283,7 +283,91 @@ reg_addr_exit:
 #define code_handle_uart_data() \
 __handle_uart_data
 
-; SOFTWARE UART DATA RECEIVE ISR -----------------------------------------------
+; SOFTWARE UART DATA RECEIVE ---------------------------------------------------
+#if 1
+
+.macro __sw_uart_rx_sbit_isr
+.if F_CPU != 16000000 && F_CPU != 8000000
+    .error "CPU clock must be 16 or 8 Mhz"
+.endif
+cbi PORTB, PORTB4
+;;  push    YH                      ;
+;;  ldio    YH, SREG                ;
+;;  push    YH                      ;
+.if F_CPU == 16000000               ; Delay: 32 * 13 = 416 = 1.5 * 277.3 cycles
+    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2) | M(ADPS0)
+.elif F_CPU == 8000000              ; Delay: 16 * 13 = 208 = 1.5 * 138.7 cycles
+    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
+.endif
+    stio    ADCSRA, YH              ; Set prescale and start conversion
+    stio    EIMSK, ZERO             ; Disable INT0 ISR execution
+    ldi     YH, 0x80                ; Init UART data shift register
+    sts     uart_data, YH
+cbi PORTB, PORTB5
+;;  pop     YH                      ;
+;;  stio    SREG, YH                ;
+;;  pop     YH                      ;
+    reti                            ;
+.endmacro
+#define code_sw_uart_rx_sbit_isr() \
+sw_uart_rx_sbit_isr: __sw_uart_rx_sbit_isr
+
+.macro __sw_uart_rx_dbit_isr
+    ; @0 mcu port for UART RX input
+    ; @1 mcu port bit number of UART RX pin
+
+    .equ    BIT_DURATION = int(1.0  * F_CPU / BAUD_RATE + 0.5) ; 278
+    .equ    ADC_DURATION = int(13.0 * F_CPU / 1000000   + 0.5)
+    .equ    BIT_EX_DELAY = int((BIT_DURATION - ADC_DURATION - (18 + 18) + 1.5) / 3)
+
+.if F_CPU != 16000000 && F_CPU != 8000000
+    .error "CPU clock must be 16 or 8 Mhz"
+.endif
+    push    YH                      ; 2
+    ldio    YH, SREG                ; 1~2
+    push    YH                      ; 2
+    lds     YH, uart_data           ; 1~2
+    clc                             ; 1
+    sbic    @0, @1                  ; 1|2 Check UART RX pin
+    sec                             ; 1
+    ror     YH                      ; 1
+sbi PINB, PORTB5
+    brcs    handle_uart_data        ; 1|2
+    sts     uart_data, YH           ; 1~2
+    ldi     YH, BIT_EX_DELAY        ; 1
+data_bit_loop:
+    dec     YH                      ; 1
+    brne    data_bit_loop           ; 1
+.if F_CPU == 16000000               ; Delay: 16*13=208, extra delay: 277-208=69
+    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
+.elif F_CPU == 8000000              ; Delay: 8*13=104,  extra delay: 138-104=34
+    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS1) | M(ADPS0)
+.endif
+    stio    ADCSRA, YH              ; Set prescale and start conversion
+    rjmp    exit_isr
+handle_uart_data:
+sbi PORTB, PORTB5
+cbi PORTB, PORTB0
+    push    YL                      ; 2
+    code_handle_uart_data()         ;
+    pop     YL                      ;
+sbi PORTB, PORTB0
+    ldi     YH, M(INTF0)            ; Clear any pending INT0 ISR
+    stio    EIFR, YH                ;
+    ldi     YH, M(INT0)             ; Allow INT0 ISR execution
+    stio    EIMSK, YH               ;
+exit_isr:
+    pop     YH                      ;
+    stio    SREG, YH                ;
+    pop     YH                      ;
+sbi PORTB, PORTB4
+    reti                            ;
+.endmacro
+#define code_sw_uart_rx_dbit_isr(PORT, PBIT) \
+sw_uart_rx_dbit_isr: __sw_uart_rx_dbit_isr PORT, PBIT
+
+#else
+
 .macro __sw_uart_rx_isr
     ; @0 mcu port for UART RX input
     ; @1 mcu port bit number for UART RX pin
@@ -291,10 +375,6 @@ __handle_uart_data
     .equ    BIT_DELAY_10 = int((1.0 * F_CPU / BAUD_RATE - 5 + 1.5) / 3)
     .equ    BIT_DELAY_15 = int((1.5 * F_CPU / BAUD_RATE - 9 - 9 + 1.5) / 3)
 
-    ; It's good to have the delay between received bytes about 200 microseconds.
-    ; In this case the receiver will be able to handle new byte properly.
-
-    cbi     PORTB, PORTB4
     ; Enter interrupt service routine
     push    YL                      ; 2   Delay loop counter
     push    YH                      ; 2   Data bits shift register
@@ -304,32 +384,20 @@ __handle_uart_data
     ; Read data bits from LSB to MSB and wait for stop bit
     ldi     YL, BIT_DELAY_15        ; 1   Delay for 1.5 bit (0.5*START+1.0*DATA) 
     ldi     YH, 0x80                ; 1   Bit shift counter
-
-    cbi     PORTB, PORTB5
-
 data_bit_loop:
-
     subi    YL, 1                   ; 1   Decrement and clear carry
     brne    data_bit_loop           ; 1|2 Go to next iteration
     ldi     YL, BIT_DELAY_10        ; 1   Load delay for next bit
     sbic    @0, @1                  ; 1|2 Check UART RX PIN
     sec                             ; 1   Set carry if RX is HIGH
     ror     YH                      ; 1   Shift register loading carry to bit7
-
-    sbi     PINB, PORTB5
-
     brcc    data_bit_loop           ; 1|2 Loop through shift register
 stop_bit_loop:
     dec     YL                      ; 1   Stop bit delay loop
     brne    stop_bit_loop           ; 1|2 Go to next iteration
 
-    sbi     PORTB, PORTB5
-    cbi     PORTB, PORTB0
-
     ; Handle received byte in register YH
     code_handle_uart_data()
-
-    sbi     PORTB, PORTB0
 
     ; Exit interrupt service routine
 
@@ -340,15 +408,14 @@ stop_bit_loop:
     stio    SREG, YH                ;
     pop     YH                      ;
     pop     YL                      ;
-
-    sbi     PORTB, PORTB4
-
     reti                            ;     Return from ISR
 .endmacro
 #define code_sw_uart_rx_isr(PORT, PORTBIT) \
 sw_uart_rx_isr: __sw_uart_rx_isr PORT, PORTBIT
 
-; HARDWARE UART DATA RECEIVE ISR -----------------------------------------------
+#endif
+
+; HARDWARE UART DATA RECEIVE ---------------------------------------------------
 .macro __hw_uart_rx_isr
     ; @0 mcu register for UART RX input
     push    YL                      ;
@@ -641,8 +708,8 @@ b_volume:   .byte 1                 \
 c_volume:   .byte 1                 \
 e_period:   .byte 2                 \
 e_shape:    .byte 1                 \
-port_a:     .byte 1                 \
-port_b:     .byte 1                 \
+unused_0:   .byte 1                 \
+uart_data:  .byte 1                 \
 a_counter:  .byte 2                 \
 b_counter:  .byte 2                 \
 c_counter:  .byte 2                 \

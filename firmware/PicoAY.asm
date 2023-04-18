@@ -56,6 +56,35 @@
     #define P(addr) (2 * addr)      ; Get address in flash
 
 ; ==============================================================================
+; PROBES FOR DEBUG
+; ==============================================================================
+
+#define DEF_PROBE(name, port, pbit)                 \
+    .equ    probe_##name##_po = PORT##port          \
+    .equ    probe_##name##_pi = PIN##port           \
+    .equ    probe_##name##_pb = PORT##port##pbit    \
+    sbi     DDR##port, PORT##port##pbit
+
+.macro __set_probe
+.if defined(@0) && defined(@1)
+    sbi     @0, @1
+.endif
+.endmacro
+
+.macro __clr_probe
+.if defined(@0) && defined(@1)
+    cbi     @0, @1
+.endif
+.endmacro
+
+#define SET_PROBE(name) \
+__set_probe probe_##name##_po, probe_##name##_pb
+#define CLR_PROBE(name) \
+__clr_probe probe_##name##_po, probe_##name##_pb
+#define TGL_PROBE(name) \
+__set_probe probe_##name##_pi, probe_##name##_pb
+
+; ==============================================================================
 ; DATA BLOCKS
 ; ==============================================================================
 
@@ -290,10 +319,7 @@ __handle_uart_data
 .if F_CPU != 16000000 && F_CPU != 8000000
     .error "CPU clock must be 16 or 8 Mhz"
 .endif
-cbi PORTB, PORTB4
-;;  push    YH                      ;
-;;  ldio    YH, SREG                ;
-;;  push    YH                      ;
+    CLR_PROBE(UART_START)
 .if F_CPU == 16000000               ; Delay: 32 * 13 = 416 = 1.5 * 277.3 cycles
     ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2) | M(ADPS0)
 .elif F_CPU == 8000000              ; Delay: 16 * 13 = 208 = 1.5 * 138.7 cycles
@@ -302,11 +328,8 @@ cbi PORTB, PORTB4
     stio    ADCSRA, YH              ; Set prescale and start conversion
     stio    EIMSK, ZERO             ; Disable INT0 ISR execution
     ldi     YH, 0x80                ; Init UART data shift register
-    sts     uart_data, YH
-cbi PORTB, PORTB5
-;;  pop     YH                      ;
-;;  stio    SREG, YH                ;
-;;  pop     YH                      ;
+    sts     uart_data, YH           ;
+    CLR_PROBE(UART_DELAY)
     reti                            ;
 .endmacro
 #define code_sw_uart_rx_sbit_isr() \
@@ -331,7 +354,7 @@ sw_uart_rx_sbit_isr: __sw_uart_rx_sbit_isr
     sbic    @0, @1                  ; 1|2 Check UART RX pin
     sec                             ; 1
     ror     YH                      ; 1
-sbi PINB, PORTB5
+    TGL_PROBE(UART_DELAY)
     brcs    handle_uart_data        ; 1|2
     sts     uart_data, YH           ; 1~2
     ldi     YH, BIT_EX_DELAY        ; 1
@@ -346,21 +369,21 @@ data_bit_loop:
     stio    ADCSRA, YH              ; Set prescale and start conversion
     rjmp    exit_isr
 handle_uart_data:
-sbi PORTB, PORTB5
-cbi PORTB, PORTB0
-    push    YL                      ; 2
+    CLR_PROBE(UART_STORE)
+    push    YL                      ;
     code_handle_uart_data()         ;
     pop     YL                      ;
-sbi PORTB, PORTB0
+    SET_PROBE(UART_STORE)
     ldi     YH, M(INTF0)            ; Clear any pending INT0 ISR
     stio    EIFR, YH                ;
     ldi     YH, M(INT0)             ; Allow INT0 ISR execution
     stio    EIMSK, YH               ;
+    SET_PROBE(UART_DELAY)
+    SET_PROBE(UART_START)
 exit_isr:
     pop     YH                      ;
     stio    SREG, YH                ;
     pop     YH                      ;
-sbi PORTB, PORTB4
     reti                            ;
 .endmacro
 #define code_sw_uart_rx_dbit_isr(PORT, PBIT) \

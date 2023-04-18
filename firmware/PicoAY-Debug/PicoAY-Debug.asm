@@ -73,6 +73,7 @@
 ; ==============================================================================
 
 main:
+    SET_PROBE(A)
     code_setup_sram()
     code_setup_data_access()
 
@@ -132,9 +133,9 @@ main:
 #endif
 
     ; Setup everything else and start emulation
-sbi DDRB, PORTB0 ; Set PORTB4 as output
-sbi DDRB, PORTB4 ; Set PORTB4 as output
-sbi DDRB, PORTB5 ; Set PORTB5 as output
+    DEF_PROBE(UART_START, B, 4)
+    DEF_PROBE(UART_DELAY, B, 5)
+    DEF_PROBE(UART_STORE, B, 0)
     code_setup_and_start_emulator()
 
     ; Software UART implementation

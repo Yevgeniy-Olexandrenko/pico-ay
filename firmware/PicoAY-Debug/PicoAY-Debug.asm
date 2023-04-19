@@ -3,7 +3,7 @@
 ; --------------------                 +---+--------+---+                      ;
 ; UART_RX   -> SW_RX / HW_RX           |   |Mini USB|   |                      ;
 ; PWM_OUT_L -> T1_PWM_A                |   +--------+   |                      ;
-; PWM_OUT_R -> T1_PWM_B          PB5 --| D13        D12 |-- PB4                ;
+; PWM_OUT_R -> T1_PWM_B    (LED) PB5 --| D13        D12 |-- PB4                ;
 ; MCU clock -> Int 8 Mhz             --| 3V3       ~D11 |-- PB3 (T2_PWM_A)     ;
 ;                                    --| REF       ~D10 |-- PB2 (T1_PWM_B)     ;
 ; ATtiny25 simulation:           PC0 --| A0         ~D9 |-- PB1 (T1_PWM_A)     ;
@@ -51,11 +51,11 @@
     .org    0x0000
     rjmp    main
     .org    INT0addr
-    rjmp    sw_uart_rx_sbit_isr
+    rjmp    sw_uart_sbit_isr
     .org    URXCaddr
-    rjmp    hw_uart_rx_isr
+    rjmp    hw_uart_data_isr
     .org    ADCCaddr
-    rjmp    sw_uart_rx_dbit_isr
+    rjmp    sw_uart_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -73,7 +73,6 @@
 ; ==============================================================================
 
 main:
-    SET_PROBE(A)
     code_setup_sram()
     code_setup_data_access()
 
@@ -139,11 +138,11 @@ main:
     code_setup_and_start_emulator()
 
     ; Software UART implementation
-    code_sw_uart_rx_sbit_isr()
-    code_sw_uart_rx_dbit_isr(PIND, PORTD2)
+    code_sw_uart_sbit_isr()
+    code_sw_uart_dbit_isr(PIND, PORTD2)
 
     ; Hardware UART implementation
-    code_hw_uart_rx_isr(UDR0)
+    code_hw_uart_data_isr(UDR0)
 
 loop:
     ; Waiting for timer overflow and samples output
@@ -155,9 +154,9 @@ loop:
 
     ; Update tone, noise and envelope generators
     ldi     AL, U_STEP                              ; 1
-    code_update_tone(a_period, a_counter, chA)      ; 30-18
-    code_update_tone(b_period, b_counter, chB)      ; 30-18
-    code_update_tone(c_period, c_counter, chC)      ; 30-18
+    code_update_tone(a_period, a_counter, AFFMSK)   ; 30-18
+    code_update_tone(b_period, b_counter, BFFMSK)   ; 30-18
+    code_update_tone(c_period, c_counter, CFFMSK)   ; 30-18
     code_reset_envelope()                           ; 16-3
     code_update_noise_envelope(ENV_STEPS)           ; TODO: 324-116 / ?-?
     code_apply_mixer()                              ; 7
@@ -165,9 +164,9 @@ loop:
     ; Compute channels samples and stereo/mono output
     ldi     BL, low(P(amp_4bit))                    ; 1
     code_compute_envelope_amp(ENV_STEPS)            ; 5
-    code_compute_channel_amp(a_volume, chA, XL)     ; 11-8
-    code_compute_channel_amp(b_volume, chB, BH)     ; 11-8
-    code_compute_channel_amp(c_volume, chC, XH)     ; 11-8
+    code_compute_channel_amp(a_volume, AFFMSK, XL)  ; 11-8
+    code_compute_channel_amp(b_volume, BFFMSK, BH)  ; 11-8
+    code_compute_channel_amp(c_volume, CFFMSK, XH)  ; 11-8
     code_compute_output_sample(STEREO_ABC)          ; 3
     rjmp    loop                                    ; 2
 

@@ -1,5 +1,5 @@
 ; Features to implement:
-; - Internal clock calibration using sofware UART in output mode
+; - Internal clock calibration using UART signal as source of sync
 ; - Auto mute chip using WDT when there is no UART communication
 ; - Disable all unused hardware to reduce power consumption
 ; - PSG chip selection using dedicated pin (high - Chip #0, low - Chip #1)
@@ -9,78 +9,82 @@
 ; GLOBAL DEFINES
 ; ==============================================================================
 
-    .equ    BAUD_RATE = 57600
-    .equ    SAMP_RATE = int(0.5 + (F_CPU / 1.0 / S_CYCLES))
-    .equ    U_STEP    = int(0.5 + (F_PSG / 8.0 / SAMP_RATE))
-    .if     U_STEP < 1 || U_STEP > 8
-    .error  "Update step is out of range"
-    .endif
+   .equ     BAUD_RATE = 57600
+   .equ     SAMP_RATE = int(0.5 + (F_CPU / 1.0 / S_CYCLES))
+   .equ     U_STEP    = int(0.5 + (F_PSG / 8.0 / SAMP_RATE))
+   .if      (U_STEP < 1 || U_STEP > 8)
+   .error   "Update step is out of range"
+   .endif
 
-    .def    ZERO    = r16           ; Constant holding zero value
-    .def    raddr   = r17           ; PSG register address and addr/data latch
-    .def    flags   = r18           ; Tone/Nose flip-flops and additional flags
-    .def    n_cnt   = r19           ; Noise generator period counter
-    .def    e_stp   = r20           ; Envelope generator step counter
-    .def    e_gen   = r21           ; Envelope generation config pointer
-    .def    AL      = r22           ; General purpose usage
-    .def    AH      = r23           ; General purpose usage
-    .def    BL      = r24           ; 16-bit value #0 low byte or general usage
-    .def    BH      = r25           ; 16-bit value #0 high byte or general usage
-;   .def    XL      = r26           ; 16-bit value #1 low byte or general usage
-;   .def    XH      = r27           ; 16-bit value #1 high byte or general usage
-;   .def    YL      = r28           ; 16-bit value #2 low byte or general usage
-;   .def    YH      = r29           ; 16-bit value #2 high byte or general usage
-;   .def    ZL      = r30           ; Flash memory offset or general usage
-;   .def    ZH      = r31           ; Flash memory first 256 bytes pointer
+   .def     ZERO    = r16           ; Constant holding zero value
+   .def     raddr   = r17           ; PSG register address and addr/data latch
+   .def     flags   = r18           ; Tone/Nose flip-flops and additional flags
+   .def     n_cnt   = r19           ; Noise generator period counter
+   .def     e_stp   = r20           ; Envelope generator step counter
+   .def     e_gen   = r21           ; Envelope generation config pointer
+   .def     AL      = r22           ; General purpose usage
+   .def     AH      = r23           ; General purpose usage
+   .def     BL      = r24           ; 16-bit value #0 low byte or general usage
+   .def     BH      = r25           ; 16-bit value #0 high byte or general usage
+;  .def     XL      = r26           ; 16-bit value #1 low byte or general usage
+;  .def     XH      = r27           ; 16-bit value #1 high byte or general usage
+;  .def     YL      = r28           ; 16-bit value #2 low byte or general usage
+;  .def     YH      = r29           ; 16-bit value #2 high byte or general usage
+;  .def     ZL      = r30           ; Flash memory offset or general usage
+;  .def     ZH      = r31           ; Flash memory first 256 bytes pointer
 
-    .equ    bit0    = 0
-    .equ    bit1    = 1
-    .equ    bit2    = 2
-    .equ    bit3    = 3
-    .equ    bit4    = 4
-    .equ    bit5    = 5
-    .equ    bit6    = 6
-    .equ    bit7    = 7
+   .equ     bit0    = 0
+   .equ     bit1    = 1
+   .equ     bit2    = 2
+   .equ     bit3    = 3
+   .equ     bit4    = 4
+   .equ     bit5    = 5
+   .equ     bit6    = 6
+   .equ     bit7    = 7
 
-    .equ    chA     = bit0
-    .equ    chB     = bit1
-    .equ    chC     = bit2
-
-    .equ    NS_B16  = bit7          ; Noise shifter bit16
-    .equ    EG_RES  = bit6          ; Envelope generator reset
-    .equ    WF_REG  = bit4          ; Waiting for register address
+   .equ     AFFMSK  = 0b00_000_001  ; Tone A flip-flop mask
+   .equ     BFFMSK  = 0b00_000_010  ; Tone A flip-flop mask
+   .equ     CFFMSK  = 0b00_000_100  ; Tone A flip-flop mask
+   .equ     NFFMSK  = 0b00_111_000  ; Noise flip-flop mask
+   .equ     NS_B16  = bit7          ; Noise shifter bit16
+   .equ     EG_RES  = bit6          ; Envelope generator reset
+   .equ     WF_REG  = bit4          ; Waiting for register address
 
     #define M(bit)  (1 << bit)      ; Get mask from bit number
     #define L(addr) (addr + 0)      ; Gel low byte address
     #define H(addr) (addr + 1)      ; Get high byte address
     #define P(addr) (2 * addr)      ; Get address in flash
 
+   .listmac
+
 ; ==============================================================================
-; PROBES FOR DEBUG
+; DEBUG PROBES
 ; ==============================================================================
 
-#define DEF_PROBE(name, port, pbit)                 \
-    .equ    probe_##name##_po = PORT##port          \
-    .equ    probe_##name##_pi = PIN##port           \
-    .equ    probe_##name##_pb = PORT##port##pbit    \
-    sbi     DDR##port, PORT##port##pbit
+#define DEF_PROBE(name, port, bit)              \
+   .equ     probe_##name##_pi = PIN##port       \
+   .equ     probe_##name##_po = PORT##port      \
+   .equ     probe_##name##_pb = PORT##port##bit \
+    sbi     DDR##port, PORT##port##bit
 
 .macro __set_probe
-.if defined(@0) && defined(@1)
+   .if      (defined(@0) && defined(@1))
     sbi     @0, @1
-.endif
+   .endif
 .endmacro
 
 .macro __clr_probe
-.if defined(@0) && defined(@1)
+   .if      (defined(@0) && defined(@1))
     cbi     @0, @1
-.endif
+   .endif
 .endmacro
 
 #define SET_PROBE(name) \
 __set_probe probe_##name##_po, probe_##name##_pb
+
 #define CLR_PROBE(name) \
 __clr_probe probe_##name##_po, probe_##name##_pb
+
 #define TGL_PROBE(name) \
 __set_probe probe_##name##_pi, probe_##name##_pb
 
@@ -88,13 +92,11 @@ __set_probe probe_##name##_pi, probe_##name##_pb
 ; DATA BLOCKS
 ; ==============================================================================
 
-.listmac
-
 ; VALUE MASK FOR EACH PSG REGISTER ---------------------------------------------
 .macro __reg_mask
     ; 16 bytes
-    .db     0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0x1F, 0x3F
-    .db     0x1F, 0x1F, 0x1F, 0xFF, 0xFF, 0x0F, 0xFF, 0xFF
+   .db      0xFF, 0x0F, 0xFF, 0x0F, 0xFF, 0x0F, 0x1F, 0x3F
+   .db      0x1F, 0x1F, 0x1F, 0xFF, 0xFF, 0x0F, 0xFF, 0xFF
 .endmacro
 #define data_reg_mask() \
 reg_mask: __reg_mask
@@ -103,18 +105,17 @@ reg_mask: __reg_mask
 .macro __amp_4bit
     ; @0 maximum amplitude
     ; 16 bytes
-.if @0 >= 0x00 && @0 <= 0xFF
-    .db     int(0.5 + @0 * 0.00000000000000), int(0.5 + @0 * 0.00772106507973)
-    .db     int(0.5 + @0 * 0.01396200503550), int(0.5 + @0 * 0.02001983672850)
-    .db     int(0.5 + @0 * 0.02969405661100), int(0.5 + @0 * 0.04039063096060)
-    .db     int(0.5 + @0 * 0.05833524071110), int(0.5 + @0 * 0.07777523460750)
-    .db     int(0.5 + @0 * 0.11108567940800), int(0.5 + @0 * 0.14848554207700)
-    .db     int(0.5 + @0 * 0.21155107957600), int(0.5 + @0 * 0.28110170138100)
-    .db     int(0.5 + @0 * 0.40042725261300), int(0.5 + @0 * 0.53443198291000)
-    .db     int(0.5 + @0 * 0.75800717174000), int(0.5 + @0 * 1.00000000000000)
-.else
-    .error "Maximum amplitude is out of range"
-.endif
+   .if      (@0 < 0x00 || @0 > 0xFF)
+   .error   "Maximum amplitude is out of range"
+   .endif
+   .db      int(0.5 + @0 * 0.00000000000000), int(0.5 + @0 * 0.00772106507973)
+   .db      int(0.5 + @0 * 0.01396200503550), int(0.5 + @0 * 0.02001983672850)
+   .db      int(0.5 + @0 * 0.02969405661100), int(0.5 + @0 * 0.04039063096060)
+   .db      int(0.5 + @0 * 0.05833524071110), int(0.5 + @0 * 0.07777523460750)
+   .db      int(0.5 + @0 * 0.11108567940800), int(0.5 + @0 * 0.14848554207700)
+   .db      int(0.5 + @0 * 0.21155107957600), int(0.5 + @0 * 0.28110170138100)
+   .db      int(0.5 + @0 * 0.40042725261300), int(0.5 + @0 * 0.53443198291000)
+   .db      int(0.5 + @0 * 0.75800717174000), int(0.5 + @0 * 1.00000000000000)
 .endmacro
 #define data_amp_4bit(MAX_AMP) \
 amp_4bit: __amp_4bit MAX_AMP
@@ -123,26 +124,25 @@ amp_4bit: __amp_4bit MAX_AMP
 .macro __amp_5bit
     ; @0 maximum amplitude
     ; 32 bytes
-.if @0 >= 0x00 && @0 <= 0xFF
-    .db     int(0.5 + @0 * 0.00000000000000), int(0.5 + @0 * 0.00000000000000)
-    .db     int(0.5 + @0 * 0.00465400167849), int(0.5 + @0 * 0.00772106507973)
-    .db     int(0.5 + @0 * 0.01095597772180), int(0.5 + @0 * 0.01396200503550)
-    .db     int(0.5 + @0 * 0.01699855039290), int(0.5 + @0 * 0.02001983672850)
-    .db     int(0.5 + @0 * 0.02436865796900), int(0.5 + @0 * 0.02969405661100)
-    .db     int(0.5 + @0 * 0.03506523231860), int(0.5 + @0 * 0.04039063096060)
-    .db     int(0.5 + @0 * 0.04853894865340), int(0.5 + @0 * 0.05833524071110)
-    .db     int(0.5 + @0 * 0.06805523765930), int(0.5 + @0 * 0.07777523460750)
-    .db     int(0.5 + @0 * 0.09251544975970), int(0.5 + @0 * 0.11108567940800)
-    .db     int(0.5 + @0 * 0.12974746318800), int(0.5 + @0 * 0.14848554207700)
-    .db     int(0.5 + @0 * 0.17666895552000), int(0.5 + @0 * 0.21155107957600)
-    .db     int(0.5 + @0 * 0.24638742656600), int(0.5 + @0 * 0.28110170138100)
-    .db     int(0.5 + @0 * 0.33373006790300), int(0.5 + @0 * 0.40042725261300)
-    .db     int(0.5 + @0 * 0.46738384069600), int(0.5 + @0 * 0.53443198291000)
-    .db     int(0.5 + @0 * 0.63517204547200), int(0.5 + @0 * 0.75800717174000)
-    .db     int(0.5 + @0 * 0.87992675669500), int(0.5 + @0 * 1.00000000000000)
-.else
-    .error "Maximum amplitude is out of range"
-.endif
+   .if      (@0 < 0x00 || @0 > 0xFF)
+   .error   "Maximum amplitude is out of range"
+   .endif
+   .db      int(0.5 + @0 * 0.00000000000000), int(0.5 + @0 * 0.00000000000000)
+   .db      int(0.5 + @0 * 0.00465400167849), int(0.5 + @0 * 0.00772106507973)
+   .db      int(0.5 + @0 * 0.01095597772180), int(0.5 + @0 * 0.01396200503550)
+   .db      int(0.5 + @0 * 0.01699855039290), int(0.5 + @0 * 0.02001983672850)
+   .db      int(0.5 + @0 * 0.02436865796900), int(0.5 + @0 * 0.02969405661100)
+   .db      int(0.5 + @0 * 0.03506523231860), int(0.5 + @0 * 0.04039063096060)
+   .db      int(0.5 + @0 * 0.04853894865340), int(0.5 + @0 * 0.05833524071110)
+   .db      int(0.5 + @0 * 0.06805523765930), int(0.5 + @0 * 0.07777523460750)
+   .db      int(0.5 + @0 * 0.09251544975970), int(0.5 + @0 * 0.11108567940800)
+   .db      int(0.5 + @0 * 0.12974746318800), int(0.5 + @0 * 0.14848554207700)
+   .db      int(0.5 + @0 * 0.17666895552000), int(0.5 + @0 * 0.21155107957600)
+   .db      int(0.5 + @0 * 0.24638742656600), int(0.5 + @0 * 0.28110170138100)
+   .db      int(0.5 + @0 * 0.33373006790300), int(0.5 + @0 * 0.40042725261300)
+   .db      int(0.5 + @0 * 0.46738384069600), int(0.5 + @0 * 0.53443198291000)
+   .db      int(0.5 + @0 * 0.63517204547200), int(0.5 + @0 * 0.75800717174000)
+   .db      int(0.5 + @0 * 0.87992675669500), int(0.5 + @0 * 1.00000000000000)
 .endmacro
 #define data_amp_5bit(MAX_AMP) \
 amp_5bit: __amp_5bit MAX_AMP
@@ -151,31 +151,30 @@ amp_5bit: __amp_5bit MAX_AMP
 .macro __envelopes
     ; @0 number of steps in waveform
     ; 64 bytes
-.if @0 == 16 || @0 == 32
-    .equ    _inc =  1
-    .equ    _dec = -1
-    .equ    _hld =  0
-    .equ    _top = @0-1
-    .equ    _bot = 0x00
-    .db     _dec, _top, _hld, _bot  ; 0
-    .db     _dec, _top, _hld, _bot  ; 1
-    .db     _dec, _top, _hld, _bot  ; 2
-    .db     _dec, _top, _hld, _bot  ; 3
-    .db     _inc, _bot, _hld, _bot  ; 4
-    .db     _inc, _bot, _hld, _bot  ; 5
-    .db     _inc, _bot, _hld, _bot  ; 6
-    .db     _inc, _bot, _hld, _bot  ; 7
-    .db     _dec, _top, _dec, _top  ; 8
-    .db     _dec, _top, _hld, _bot  ; 9
-    .db     _dec, _top, _inc, _bot  ; A
-    .db     _dec, _top, _hld, _top  ; B
-    .db     _inc, _bot, _inc, _bot  ; C
-    .db     _inc, _bot, _hld, _top  ; D
-    .db     _inc, _bot, _dec, _top  ; E
-    .db     _inc, _bot, _hld, _bot  ; F
-.else
-    .error "Unknown number of steps for envelope"
-.endif
+   .if      (@0 != 16 && @0 != 32)
+   .error   "Unknown number of steps for envelope"
+   .endif
+   .equ     _inc =  1
+   .equ     _dec = -1
+   .equ     _hld =  0
+   .equ     _top = @0-1
+   .equ     _bot = 0x00
+   .db      _dec, _top, _hld, _bot  ; 0
+   .db      _dec, _top, _hld, _bot  ; 1
+   .db      _dec, _top, _hld, _bot  ; 2
+   .db      _dec, _top, _hld, _bot  ; 3
+   .db      _inc, _bot, _hld, _bot  ; 4
+   .db      _inc, _bot, _hld, _bot  ; 5
+   .db      _inc, _bot, _hld, _bot  ; 6
+   .db      _inc, _bot, _hld, _bot  ; 7
+   .db      _dec, _top, _dec, _top  ; 8
+   .db      _dec, _top, _hld, _bot  ; 9
+   .db      _dec, _top, _inc, _bot  ; A
+   .db      _dec, _top, _hld, _top  ; B
+   .db      _inc, _bot, _inc, _bot  ; C
+   .db      _inc, _bot, _hld, _top  ; D
+   .db      _inc, _bot, _dec, _top  ; E
+   .db      _inc, _bot, _hld, _bot  ; F
 .endmacro
 #define data_envelopes(STEPS) \
 envelopes: __envelopes STEPS
@@ -190,13 +189,13 @@ envelopes: __envelopes STEPS
     ; @1 source I/O register
     ; AVR8L:  1
     ; V2/V2E: 2-1
-.if @1 < 0x40 
+   .if      (@1 < 0x40)
     in      @0, @1                  ; 1   I/O register
-.elif @1 >= 0x60 && @1 < SRAM_START
+   .elif    (@1 >= 0x60 && @1 < SRAM_START)
     lds     @0, @1                  ; 1~2 Memory mapped register
-.else
-    .error "Invalid I/O register address"
-.endif
+   .else
+   .error   "Invalid I/O register address"
+   .endif
 .endmacro
 
 ; STORE DATA TO IO REGISTER ----------------------------------------------------
@@ -205,13 +204,13 @@ envelopes: __envelopes STEPS
     ; @1 source CPU register
     ; AVR8L:  1
     ; V2/V2E: 2-1
-.if @0 < 0x40 
+   .if      (@0 < 0x40)
     out     @0, @1                  ; 1   I/O register
-.elif @0 >= 0x60 && @0 < SRAM_START 
+   .elif    (@0 >= 0x60 && @0 < SRAM_START)
     sts     @0, @1                  ; 1~2 Memory mapped register
-.else
-    .error "Invalid I/O register address"
-.endif
+   .else
+   .error   "Invalid I/O register address"
+   .endif
 .endmacro
 
 ; LOAD DATA FROM FLASH USING TABLE BASE AND DISPLACEMENT -----------------------
@@ -221,14 +220,14 @@ envelopes: __envelopes STEPS
     ; @1 displacement or table base
     ; AVR8L:  3
     ; V2/V2E: 4
-#ifdef __CORE_AVR8L_0__
+#if __CORE_AVR8L_0__
     add     ZL, @1                  ; 1   Add table base with displacement
     ld      @0, Z                   ; 2   Load indirrect from Z
 #elif __CORE_V2__ || __CORE_V2E__
     add     ZL, @1                  ; 1   Add table base with displacement
     lpm     @0, Z                   ; 3   Load indirrect from Z
 #else
-    .error "Unknown AVR core version"
+   .error   "Unknown AVR core version"
 #endif
 .endmacro
 
@@ -239,8 +238,6 @@ envelopes: __envelopes STEPS
 ; CLEAR SRAM VARIABLES AND SET STACK POINTER -----------------------------------
 .macro __setup_sram
     clr     ZERO                    ;     Always zero value used across the code
-
-    ; Clear SRAM variables
     ldi     ZL, low(psg_regs)       ;     Setup start address in SRAM
     ldi     ZH, high(psg_regs)      ;
     ldi     AL, psg_end-psg_regs    ;     SRAM size to be cleared
@@ -248,25 +245,23 @@ sram_clear_loop:                    ;
     st      Z+, ZERO                ;
     dec     AL                      ;
     brne    sram_clear_loop         ;
-
-    ; Set stack pointer
     ldi     AL, low(RAMEND)         ;
     stio    SPL, AL                 ;
-.ifdef SPH
+   .ifdef   SPH
     ldi     AL, high(RAMEND)        ;
     stio    SPH, AL                 ;
-.endif
+   .endif
 .endmacro
 #define code_setup_sram() \
 __setup_sram
 
 ; SET Z POINTER TO FIRST 256 BYTES OF FLASH TO ASSESS DATA ---------------------
 .macro __setup_data_access
-.ifdef MAPPED_FLASH_START
+   .ifdef   MAPPED_FLASH_START
     ldi     ZH, high(MAPPED_FLASH_START)
-.else
+   .else
     ldi     ZH, 0x00
-.endif
+   .endif
 .endmacro
 #define code_setup_data_access() \
 __setup_data_access
@@ -285,10 +280,11 @@ __setup_and_start_emulator
 
 ; HANDLE UART RECEIVED DATA ACCORDING TO PROTOCOL ------------------------------
 .macro __handle_uart_data
+    ; YL must be saved outside this code
     ; YH received data byte
     sbrs    raddr, WF_REG           ;     Skip next instruction if waiting for 
     rjmp    reg_data_received       ;     incoming register address
-    cpi     YH, 0x10                ;     Check if received byte is a valid
+    cpi     YH, 0x10-2              ;     Check if received byte is a valid
     brsh    reg_addr_exit           ;     register addres, otherwise try to sync
     mov     raddr, YH               ;     Received data is a register address,
     rjmp    reg_addr_exit           ;     so save it and exit
@@ -313,39 +309,38 @@ reg_addr_exit:
 __handle_uart_data
 
 ; SOFTWARE UART DATA RECEIVE ---------------------------------------------------
-#if 1
+   .equ     BIT_DURATION = int(1.0  * F_CPU / BAUD_RATE + 0.5)
+   .equ     ADC_DURATION = int(13.0 * F_CPU / 1000000   + 0.5)
+   .equ     BIT_EX_DELAY = int((BIT_DURATION - ADC_DURATION - (18 + 18) + 1.5) / 3)
 
-.macro __sw_uart_rx_sbit_isr
-.if F_CPU != 16000000 && F_CPU != 8000000
-    .error "CPU clock must be 16 or 8 Mhz"
-.endif
+; TODO: write techical aspects of the implementation
+
+.macro __sw_uart_sbit_isr
+   .if      (F_CPU != 16000000 && F_CPU != 8000000)
+   .error   "CPU clock must be 16 or 8 Mhz"
+   .endif
     CLR_PROBE(UART_START)
-.if F_CPU == 16000000               ; Delay: 32 * 13 = 416 = 1.5 * 277.3 cycles
+   .if      (F_CPU == 16000000)     ;     Delay: 32*13=416=1.5*277.3 cycles
     ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2) | M(ADPS0)
-.elif F_CPU == 8000000              ; Delay: 16 * 13 = 208 = 1.5 * 138.7 cycles
+   .elif    (F_CPU == 8000000)      ;     Delay: 16*13=208=1.5*138.7 cycles
     ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
-.endif
-    stio    ADCSRA, YH              ; Set prescale and start conversion
-    stio    EIMSK, ZERO             ; Disable INT0 ISR execution
-    ldi     YH, 0x80                ; Init UART data shift register
+   .endif
+    stio    ADCSRA, YH              ;     Set prescale and start conversion
+    stio    EIMSK, ZERO             ;     Disable INT0 ISR execution
+    ldi     YH, 0x80                ;     Init UART data shift register
     sts     uart_data, YH           ;
     CLR_PROBE(UART_DELAY)
     reti                            ;
 .endmacro
-#define code_sw_uart_rx_sbit_isr() \
-sw_uart_rx_sbit_isr: __sw_uart_rx_sbit_isr
+#define code_sw_uart_sbit_isr() \
+sw_uart_sbit_isr: __sw_uart_sbit_isr
 
-.macro __sw_uart_rx_dbit_isr
+.macro __sw_uart_dbit_isr
     ; @0 mcu port for UART RX input
     ; @1 mcu port bit number of UART RX pin
-
-    .equ    BIT_DURATION = int(1.0  * F_CPU / BAUD_RATE + 0.5) ; 278
-    .equ    ADC_DURATION = int(13.0 * F_CPU / 1000000   + 0.5)
-    .equ    BIT_EX_DELAY = int((BIT_DURATION - ADC_DURATION - (18 + 18) + 1.5) / 3)
-
-.if F_CPU != 16000000 && F_CPU != 8000000
-    .error "CPU clock must be 16 or 8 Mhz"
-.endif
+   .if      (F_CPU != 16000000 && F_CPU != 8000000)
+   .error   "CPU clock must be 16 or 8 Mhz"
+   .endif
     push    YH                      ; 2
     ldio    YH, SREG                ; 1~2
     push    YH                      ; 2
@@ -358,15 +353,15 @@ sw_uart_rx_sbit_isr: __sw_uart_rx_sbit_isr
     brcs    handle_uart_data        ; 1|2
     sts     uart_data, YH           ; 1~2
     ldi     YH, BIT_EX_DELAY        ; 1
-data_bit_loop:
+extra_delay_loop:
     dec     YH                      ; 1
-    brne    data_bit_loop           ; 1
-.if F_CPU == 16000000               ; Delay: 16*13=208, extra delay: 277-208=69
+    brne    extra_delay_loop        ; 1
+   .if      (F_CPU == 16000000)     ;     Delay: 16*13=208, extra: 277-208=69
     ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
-.elif F_CPU == 8000000              ; Delay: 8*13=104,  extra delay: 138-104=34
+   .elif    (F_CPU == 8000000)      ;     Delay: 8*13=104,  extra: 138-104=34
     ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS1) | M(ADPS0)
-.endif
-    stio    ADCSRA, YH              ; Set prescale and start conversion
+   .endif
+    stio    ADCSRA, YH              ;     Set prescale and start conversion
     rjmp    exit_isr
 handle_uart_data:
     CLR_PROBE(UART_STORE)
@@ -374,9 +369,9 @@ handle_uart_data:
     code_handle_uart_data()         ;
     pop     YL                      ;
     SET_PROBE(UART_STORE)
-    ldi     YH, M(INTF0)            ; Clear any pending INT0 ISR
+    ldi     YH, M(INTF0)            ;     Clear any pending INT0 ISR
     stio    EIFR, YH                ;
-    ldi     YH, M(INT0)             ; Allow INT0 ISR execution
+    ldi     YH, M(INT0)             ;     Allow INT0 ISR execution
     stio    EIMSK, YH               ;
     SET_PROBE(UART_DELAY)
     SET_PROBE(UART_START)
@@ -386,60 +381,11 @@ exit_isr:
     pop     YH                      ;
     reti                            ;
 .endmacro
-#define code_sw_uart_rx_dbit_isr(PORT, PBIT) \
-sw_uart_rx_dbit_isr: __sw_uart_rx_dbit_isr PORT, PBIT
-
-#else
-
-.macro __sw_uart_rx_isr
-    ; @0 mcu port for UART RX input
-    ; @1 mcu port bit number for UART RX pin
-
-    .equ    BIT_DELAY_10 = int((1.0 * F_CPU / BAUD_RATE - 5 + 1.5) / 3)
-    .equ    BIT_DELAY_15 = int((1.5 * F_CPU / BAUD_RATE - 9 - 9 + 1.5) / 3)
-
-    ; Enter interrupt service routine
-    push    YL                      ; 2   Delay loop counter
-    push    YH                      ; 2   Data bits shift register
-    ldio    YH, SREG                ; 1   This ISR needs for 4+2 bytes of SRAM
-    push    YH                      ; 2   to save registers and return address
-
-    ; Read data bits from LSB to MSB and wait for stop bit
-    ldi     YL, BIT_DELAY_15        ; 1   Delay for 1.5 bit (0.5*START+1.0*DATA) 
-    ldi     YH, 0x80                ; 1   Bit shift counter
-data_bit_loop:
-    subi    YL, 1                   ; 1   Decrement and clear carry
-    brne    data_bit_loop           ; 1|2 Go to next iteration
-    ldi     YL, BIT_DELAY_10        ; 1   Load delay for next bit
-    sbic    @0, @1                  ; 1|2 Check UART RX PIN
-    sec                             ; 1   Set carry if RX is HIGH
-    ror     YH                      ; 1   Shift register loading carry to bit7
-    brcc    data_bit_loop           ; 1|2 Loop through shift register
-stop_bit_loop:
-    dec     YL                      ; 1   Stop bit delay loop
-    brne    stop_bit_loop           ; 1|2 Go to next iteration
-
-    ; Handle received byte in register YH
-    code_handle_uart_data()
-
-    ; Exit interrupt service routine
-
-        ldi     YH, M(INTF0)
-        stio    EIFR, YH
-
-    pop     YH                      ;     Restore used registers from stack
-    stio    SREG, YH                ;
-    pop     YH                      ;
-    pop     YL                      ;
-    reti                            ;     Return from ISR
-.endmacro
-#define code_sw_uart_rx_isr(PORT, PORTBIT) \
-sw_uart_rx_isr: __sw_uart_rx_isr PORT, PORTBIT
-
-#endif
+#define code_sw_uart_dbit_isr(PORT, PBIT) \
+sw_uart_dbit_isr: __sw_uart_dbit_isr PORT, PBIT
 
 ; HARDWARE UART DATA RECEIVE ---------------------------------------------------
-.macro __hw_uart_rx_isr
+.macro __hw_uart_data_isr
     ; @0 mcu register for UART RX input
     push    YL                      ;
     push    YH                      ;
@@ -453,8 +399,8 @@ sw_uart_rx_isr: __sw_uart_rx_isr PORT, PORTBIT
     pop     YL                      ;
     reti                            ;
 .endmacro
-#define code_hw_uart_rx_isr(UART) \
-hw_uart_rx_isr: __hw_uart_rx_isr UART
+#define code_hw_uart_data_isr(UART) \
+hw_uart_data_isr: __hw_uart_data_isr UART
 
 ; SYNCHRONIZE IN TIME AND OUTPUT PREVIOUSLY COMPUTED RESULT --------------------
 .macro __sync_and_out
@@ -549,7 +495,9 @@ __reset_envelope
     ; 16 + U_STEP * (16 + 22 + 3) + 7 
     ; 16 + U_STEP * (4 + 6 + 3) + 7
 
-.if @0 == 16 || @0 == 32
+   .if      (@0 != 16 && @0 != 32)
+   .error   "Unknown number of steps for envelope"
+   .endif
     ; Read state from SRAM and init loop
     ; AVR8L:  9-9
     ; V2/V2E: 16-16
@@ -560,16 +508,16 @@ __reset_envelope
     lds     BL, L(n_shifter)        ; 1~2 Load noise shifter from SRAM
     lds     BH, H(n_shifter)        ; 1~2 Noise shifter high byte
     lds     AL, n_period            ; 1~2 Load noise period from SRAM and double
-.if @0 == 16
-    .if     U_STEP/2 != U_STEP-U_STEP/2
-    .error  "Update step must be even number"
-    .endif
+   .if      (@0 == 16)
+   .if      (U_STEP/2 != U_STEP-U_STEP/2)
+   .error   "Update step must be even number"
+   .endif
     ldi     AH, U_STEP/2            ; 1   Init update iterations
-.else
+   .else
     lsl     AL                      ; 1   it to simulate noise prescaler
     ldi     AH, U_STEP              ; 1   Init update iterations
-.endif
-iteration_loop:
+   .endif
+update_loop:
 
     ; Update noise generator
     ; AVR8L:  16-4
@@ -586,9 +534,9 @@ iteration_loop:
     bld     BH, bit7                ; 1
     bst     ZL, bit0                ; 1   Store feedback as bit16 of the shifter
     bld     flags, NS_B16           ; 1   in bit7 of the flags register
-    cbr     flags, 0b00111000       ; 1   Set noise output flags according to
+    cbr     flags, NFFMSK           ; 1   Set noise output flags according to
     sbrc    BL, bit0                ; 1|2 bit0 of the current shifter state
-    sbr     flags, 0b00111000       ; 1
+    sbr     flags, NFFMSK           ; 1
 exit_noise:
     inc     n_cnt                   ; 1   counter = counter + 1
 
@@ -616,14 +564,11 @@ exit_envelope:
     ; AVR8L:  6-3 
     ; V2/V2E: 10-3
     dec     AH                      ; 1   Decrement iteration counter and
-    brne    iteration_loop          ; 1|2 go to next interation
+    brne    update_loop             ; 1|2 go to next interation
     sts     L(n_shifter), BL        ; 1~2 Save noise shifter into SRAM
     sts     H(n_shifter), BH        ; 1~2 Noise shifter high byte
     sts     L(e_counter), YL        ; 1~2 Save envelope counter into SRAM
     sts     H(e_counter), YH        ; 1~2 Envelope counter high byte
-.else
-	.error "Unknown number of steps for envelope"
-.endif
 .endmacro
 #define code_update_noise_envelope(STEPS) \
 __update_noise_envelope STEPS
@@ -648,16 +593,15 @@ __apply_mixer
     ; AL envelope amplitude
     ; AVR8L:  4
     ; V2/V2E: 5
-.if @0 == 16 || @0 == 32
-.if @0 == 16
+   .if      (@0 != 16 && @0 != 32)
+   .error   "Unknown number of steps for envelope"
+   .endif
+   .if      (@0 == 16)
     ldi     ZL, low(P(amp_4bit))    ; 1
-.else
+   .else
     ldi     ZL, low(P(amp_5bit))    ; 1
-.endif
+   .endif
     ldp     AL, e_stp               ; 3~4
-.else
-    .error "Unknown number of steps for envelope"
-.endif
 .endmacro
 #define code_compute_envelope_amp(STEPS) \
 __compute_envelope_amp STEPS
@@ -684,33 +628,30 @@ use_envelope:
 #define code_compute_channel_amp(VOLUME, CHANNEL, AMP) \
 __compute_channel_amp VOLUME, CHANNEL, AMP
 
-; COMPUTE STEREO 8-BIT OR MONO 16-BIT OUTPUT -----------------------------------
-    .equ MONO       = 0             ;
-    .equ STEREO_ABC = 1             ;
-    .equ STEREO_ACB = 2             ;
+; COMPUTE STEREO 8-BIT PER CHANNEL OUTPUT --------------------------------------
+   .equ     STEREO_ABC = 1          ;
+   .equ     STEREO_ACB = 2          ;
 
 .macro __compute_output_sample
-    ; XL channel A amplitude -> stereo L sample / mono sample LSB
+    ; XL channel A amplitude -> stereo L sample
     ; BH channel B amplitude
-    ; XH channel C amplitude -> stereo R sample / mono sample MSB
+    ; XH channel C amplitude -> stereo R sample
     ; @0 output type
-.if @0 == MONO
-    ; TODO
-.elif @0 == STEREO_ABC
+   .if      (@0 == STEREO_ABC)
     ; AVR8L:  3
     ; V2/V2E: 3
     lsr     BH                      ; 1   Divide B channel amplitude by 2
     add     XL, BH                  ; 1   Left  = Add B channel to A channel
     add     XH, BH                  ; 1   Right = Add B channel to C channel
-.elif @0 == STEREO_ACB
+   .elif    (@0 == STEREO_ACB)
     ; AVR8L:  3
     ; V2/V2E: 3
     lsr     XH                      ; 1   Divide C channel amplitude by 2
     add     XL, XH                  ; 1   Left  = Add C channel to A channel
     add     XH, BH                  ; 1   Right = Add C channel to B channel
-.else
-    .error "Unknown output type"
-.endif
+   .else
+   .error   "Unknown output type"
+   .endif
 .endmacro
 #define code_compute_output_sample(TYPE) \
 __compute_output_sample TYPE
@@ -721,21 +662,21 @@ __compute_output_sample TYPE
 
 #define sram_psg_regs_and_state()   \
 psg_regs:                           \
-a_period:   .byte 2                 \
-b_period:   .byte 2                 \
-c_period:   .byte 2                 \
-n_period:   .byte 1                 \
-mixer:      .byte 1                 \
-a_volume:   .byte 1                 \
-b_volume:   .byte 1                 \
-c_volume:   .byte 1                 \
-e_period:   .byte 2                 \
-e_shape:    .byte 1                 \
-unused_0:   .byte 1                 \
-uart_data:  .byte 1                 \
-a_counter:  .byte 2                 \
-b_counter:  .byte 2                 \
-c_counter:  .byte 2                 \
-n_shifter:  .byte 2                 \
-e_counter:  .byte 2                 \
+a_period:  .byte 2                  \
+b_period:  .byte 2                  \
+c_period:  .byte 2                  \
+n_period:  .byte 1                  \
+mixer:     .byte 1                  \
+a_volume:  .byte 1                  \
+b_volume:  .byte 1                  \
+c_volume:  .byte 1                  \
+e_period:  .byte 2                  \
+e_shape:   .byte 1                  \
+unused_0:  .byte 1                  \
+uart_data: .byte 1                  \
+a_counter: .byte 2                  \
+b_counter: .byte 2                  \
+c_counter: .byte 2                  \
+n_shifter: .byte 2                  \
+e_counter: .byte 2                  \
 psg_end:

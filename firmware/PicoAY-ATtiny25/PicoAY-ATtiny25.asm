@@ -73,8 +73,6 @@ main:
     stio    GTCCR, AL
     ldi     AL, 0xFF
     stio    OCR1C, AL
-    ldi     AL, 0x7F
-    stio    OCR1A, AL
 
     ; Setup everything else and start emulation
     code_setup_and_start_emulator()
@@ -84,25 +82,25 @@ main:
 
 loop:
     ; Waiting for timer overflow and samples output
-    code_sync_and_out(TIFR, TOV0, OCR1A, OCR1B) ; 6
+    code_sync_and_out(TIFR, TOV0, OCR1A, OCR1B)     ; 6
 
     ; Update tone, noise and envelope generators
-    ldi     AL, U_STEP                          ; 1
-    code_update_tone(a_period, a_counter, chA)  ; 30-18
-    code_update_tone(b_period, b_counter, chB)  ; 30-18
-    code_update_tone(c_period, c_counter, chC)  ; 30-18
-    code_reset_envelope()                       ; 16-3
-    code_update_noise_envelope(32)              ; 324-116
-    code_apply_mixer()                          ; 7
+    ldi     AL, U_STEP                              ; 1
+    code_update_tone(a_period, a_counter, AFFMSK)   ; 30-18
+    code_update_tone(b_period, b_counter, BFFMSK)   ; 30-18
+    code_update_tone(c_period, c_counter, CFFMSK)   ; 30-18
+    code_reset_envelope()                           ; 16-3
+    code_update_noise_envelope(32)                  ; 324-116
+    code_apply_mixer()                              ; 7
 
     ; Compute channels samples and stereo/mono output
-    ldi     BL, low(P(amp_4bit))                ; 1
-    code_compute_envelope_amp(32)               ; 5
-    code_compute_channel_amp(a_volume, chA, XL) ; 11-8
-    code_compute_channel_amp(b_volume, chB, BH) ; 11-8
-    code_compute_channel_amp(c_volume, chC, XH) ; 11-8
-    code_compute_output_sample(STEREO_ABC)      ; 3
-    rjmp    loop                                ; 2
+    ldi     BL, low(P(amp_4bit))                    ; 1
+    code_compute_envelope_amp(32)                   ; 5
+    code_compute_channel_amp(a_volume, AFFMSK, XL)  ; 11-8
+    code_compute_channel_amp(b_volume, BFFMSK, BH)  ; 11-8
+    code_compute_channel_amp(c_volume, CFFMSK, XH)  ; 11-8
+    code_compute_output_sample(STEREO_ABC)          ; 3
+    rjmp    loop                                    ; 2
 
     ; max cycles: 6+1+3*30+16+324+7+5+1+3*11+3+2=488 (+13%)
     ; min cycles: 6+1+3*18+3+116+7+5+1+3*8+3+2=222   (-48%)

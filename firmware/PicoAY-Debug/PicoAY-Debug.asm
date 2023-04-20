@@ -30,7 +30,7 @@
 #if defined(SIM_T10)
     .equ    F_CPU     = 8000000
     .equ    F_PSG     = 1750000
-    .equ    S_CYCLES  = 292
+    .equ    S_CYCLES  = 362;292
     .equ    MAX_AMP   = 170
     .equ    ENV_STEPS = 16
 #elif defined(SIM_T25)
@@ -76,6 +76,15 @@ main:
     code_setup_sram()
     code_setup_data_access()
 
+    ; Setup system clock devider 2 to make 8 MHz from 16 MHz
+   .if      (F_CPU == 8000000)
+    ldi     AL, M(CLKPCE)           ;
+    stio    CLKPR, AL               ;
+    ldi     AL, M(CLKPS0)           ;
+    stio    CLKPR, AL               ;
+   .endif
+
+#if 1
     ; Setup external interrupt INT0 on PD2 (RX) for software UART
     cbi     DDRD,  PORTD2           ; Set PORTD2 as input
     sbi     PORTD, PORTD2           ; Enable pull-up resistor on PORTD2
@@ -87,9 +96,9 @@ main:
     ; Setup ADC to use as background delay for software UART
     ldi     AL, M(ADEN) | M(ADSC)   ; Enable ADC, set min prescaler and start
     stio    ADCSRA, AL              ; conversion to achieve stable 13 cycles
-
+#endif
     ; Setup hardware UART RX
-    .equ    UBRR = (int(0.5 + F_CPU / 8.0 / BAUD_RATE) - 1)
+    .equ    UBRR = (F_CPU / 8 / BAUD_RATE - 1)
     ldi     AL, high(UBRR)          ;
     stio    UBRR0H, AL              ;
     ldi     AL, low(UBRR)           ;
@@ -132,9 +141,9 @@ main:
 #endif
 
     ; Setup everything else and start emulation
-    DEF_PROBE(UART_START, B, 4)
-    DEF_PROBE(UART_DELAY, B, 5)
-    DEF_PROBE(UART_STORE, B, 0)
+    DEF_PROBE(UART_START, C, 0)
+    DEF_PROBE(UART_DELAY, C, 1)
+    DEF_PROBE(UART_STORE, C, 2)
     code_setup_and_start_emulator()
 
     ; Software UART implementation
@@ -154,9 +163,9 @@ loop:
 
     ; Update tone, noise and envelope generators
     ldi     AL, U_STEP                              ; 1
-    code_update_tone(a_period, a_counter, AFFMSK)   ; 30-18
-    code_update_tone(b_period, b_counter, BFFMSK)   ; 30-18
-    code_update_tone(c_period, c_counter, CFFMSK)   ; 30-18
+    code_update_tone(a_period, a_counter, AFFBIT)   ; 30-18
+    code_update_tone(b_period, b_counter, BFFBIT)   ; 30-18
+    code_update_tone(c_period, c_counter, CFFBIT)   ; 30-18
     code_reset_envelope()                           ; 16-3
     code_update_noise_envelope(ENV_STEPS)           ; TODO: 324-116 / ?-?
     code_apply_mixer()                              ; 7
@@ -164,9 +173,9 @@ loop:
     ; Compute channels samples and stereo/mono output
     ldi     BL, low(P(amp_4bit))                    ; 1
     code_compute_envelope_amp(ENV_STEPS)            ; 5
-    code_compute_channel_amp(a_volume, AFFMSK, XL)  ; 11-8
-    code_compute_channel_amp(b_volume, BFFMSK, BH)  ; 11-8
-    code_compute_channel_amp(c_volume, CFFMSK, XH)  ; 11-8
+    code_compute_channel_amp(a_volume, AFFBIT, XL)  ; 11-8
+    code_compute_channel_amp(b_volume, BFFBIT, BH)  ; 11-8
+    code_compute_channel_amp(c_volume, CFFBIT, XH)  ; 11-8
     code_compute_output_sample(STEREO_ABC)          ; 3
     rjmp    loop                                    ; 2
 

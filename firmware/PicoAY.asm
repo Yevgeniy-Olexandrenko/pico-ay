@@ -12,7 +12,7 @@
    .equ     BAUD_RATE = 57600
    .equ     SAMP_RATE = int(0.5 + (F_CPU / 1.0 / S_CYCLES))
    .equ     U_STEP    = int(0.5 + (F_PSG / 8.0 / SAMP_RATE))
-   .if      (U_STEP < 1 || U_STEP > 8)
+   .if      (U_STEP < 1 || U_STEP > 10)
    .error   "Update step is out of range"
    .endif
 
@@ -42,9 +42,9 @@
    .equ     bit6    = 6
    .equ     bit7    = 7
 
-   .equ     AFFMSK  = 0b00_000_001  ; Tone A flip-flop mask
-   .equ     BFFMSK  = 0b00_000_010  ; Tone A flip-flop mask
-   .equ     CFFMSK  = 0b00_000_100  ; Tone A flip-flop mask
+   .equ     AFFBIT  = bit0          ; Tone A flip-flop bit
+   .equ     BFFBIT  = bit1          ; Tone A flip-flop bit
+   .equ     CFFBIT  = bit2          ; Tone A flip-flop bit
    .equ     NFFMSK  = 0b00_111_000  ; Noise flip-flop mask
    .equ     NS_B16  = bit7          ; Noise shifter bit16
    .equ     EG_RES  = bit6          ; Envelope generator reset
@@ -309,9 +309,9 @@ reg_addr_exit:
 __handle_uart_data
 
 ; SOFTWARE UART DATA RECEIVE ---------------------------------------------------
-   .equ     BIT_DURATION = int(1.0  * F_CPU / BAUD_RATE + 0.5)
-   .equ     ADC_DURATION = int(13.0 * F_CPU / 1000000   + 0.5)
-   .equ     BIT_EX_DELAY = int((BIT_DURATION - ADC_DURATION - (18 + 18) + 1.5) / 3)
+   .equ     BIT_DURATION = (F_CPU / BAUD_RATE)
+   .equ     ADC_DURATION = (F_CPU * 13 / 1000000)
+   .equ     BIT_EX_DELAY = ((BIT_DURATION - ADC_DURATION - 36) / 3)
 
 ; TODO: write techical aspects of the implementation
 
@@ -352,10 +352,12 @@ sw_uart_sbit_isr: __sw_uart_sbit_isr
     TGL_PROBE(UART_DELAY)
     brcs    handle_uart_data        ; 1|2
     sts     uart_data, YH           ; 1~2
+   .if      (BIT_EX_DELAY > 0)
     ldi     YH, BIT_EX_DELAY        ; 1
 extra_delay_loop:
     dec     YH                      ; 1
     brne    extra_delay_loop        ; 1
+   .endif
    .if      (F_CPU == 16000000)     ;     Delay: 16*13=208, extra: 277-208=69
     ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
    .elif    (F_CPU == 8000000)      ;     Delay: 8*13=104,  extra: 138-104=34
@@ -554,7 +556,7 @@ exit_noise:
     cpi     e_stp, @0               ; 1   When envelope step reaches 16/32 after
     brlo    exit_envelope           ; 1|2 increment or get 255 after decrement
     ldi     ZL, 0b00000010          ; 1   then generation config switches to the
-    eor     e_gen, ZL               ; 1   alteravive phase and envelope step 
+    eor     e_gen, ZL               ; 1   alternative phase and envelope step
     ldi     ZL, low(P(envelopes)+1) ; 1   reloads with a new value from config
     ldp     e_stp, e_gen            ; 3~4
 exit_envelope:

@@ -86,9 +86,9 @@ loop:
 
     ; Update tone, noise and envelope generators
     ldi     AL, U_STEP                              ; 1
-    code_update_tone(a_period, a_counter, AFFMSK)   ; 30-18
-    code_update_tone(b_period, b_counter, BFFMSK)   ; 30-18
-    code_update_tone(c_period, c_counter, CFFMSK)   ; 30-18
+    code_update_tone(a_period, a_counter, AFFBIT)   ; 30-18
+    code_update_tone(b_period, b_counter, BFFBIT)   ; 30-18
+    code_update_tone(c_period, c_counter, CFFBIT)   ; 30-18
     code_reset_envelope()                           ; 16-3
     code_update_noise_envelope(32)                  ; 324-116
     code_apply_mixer()                              ; 7
@@ -96,9 +96,9 @@ loop:
     ; Compute channels samples and stereo/mono output
     ldi     BL, low(P(amp_4bit))                    ; 1
     code_compute_envelope_amp(32)                   ; 5
-    code_compute_channel_amp(a_volume, AFFMSK, XL)  ; 11-8
-    code_compute_channel_amp(b_volume, BFFMSK, BH)  ; 11-8
-    code_compute_channel_amp(c_volume, CFFMSK, XH)  ; 11-8
+    code_compute_channel_amp(a_volume, AFFBIT, XL)  ; 11-8
+    code_compute_channel_amp(b_volume, BFFBIT, BH)  ; 11-8
+    code_compute_channel_amp(c_volume, CFFBIT, XH)  ; 11-8
     code_compute_output_sample(STEREO_ABC)          ; 3
     rjmp    loop                                    ; 2
 

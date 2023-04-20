@@ -1,5 +1,15 @@
 # PicoAY project
 
+### Microcontroller requirements
+- From 6 to 8 pin package design
+- Internal oscillator capable to run at 8, 12, 16 or 20 MHz
+- Flash memory at least 1024 bytes, SRAM is 32 bytes or more
+- AVR CPU core at least AVR8L (16 registers, 54 instructions)
+- One or more pins capable of sensing the input signal change
+- Analog to digital converter (ADC) or hardware USART module
+- At least one timer with two independent compare units for PWM
+- Watchdog timer (WDT) supporting interrupt service routine (ISR)
+
 ### Firmware options
 
 <details>

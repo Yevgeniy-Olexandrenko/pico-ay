@@ -1,26 +1,26 @@
 ;                                                                              ;
-; ATtiny10 simulation:                    Arduino Nano                         ;
-; --------------------                 +---+--------+---+                      ;
-; UART_RX   -> SW_RX / HW_RX           |   |Mini USB|   |                      ;
-; PWM_OUT_L -> T1_PWM_A                |   +--------+   |                      ;
-; PWM_OUT_R -> T1_PWM_B    (LED) PB5 --| D13        D12 |-- PB4                ;
-; MCU clock -> Int 8 Mhz             --| 3V3       ~D11 |-- PB3 (T2_PWM_A)     ;
-;                                    --| REF       ~D10 |-- PB2 (T1_PWM_B)     ;
-; ATtiny25 simulation:           PC0 --| A0         ~D9 |-- PB1 (T1_PWM_A)     ;
-; --------------------           PC1 --| A1          D8 |-- PB0                ;
-; UART_RX   -> SW_RX / HW_RX     PC2 --| A2          D7 |-- PD7                ;
-; PWM_OUT_L -> T2_PWM_A          PC3 --| A3         ~D6 |-- PD6 (T0_PWM_A)     ;
-; PWM_OUT_R -> T2_PWM_B          PC4 --| A4         ~D5 |-- PD5 (T0_PWM_B)     ;
-; MCU clock -> Ext 16 Mhz        PC5 --| A5          D4 |-- PD4                ;
-;                                    --| A6         ~D3 |-- PD3 (T2_PWM_B)     ;
-;                                    --| A7          D2 |-- PD2 (SW_RX)        ;
-;                                VCC --| 5V         GND |-- GND                ;
-;                       (/RESET) PC6 --| RST        RST |-- PC6 (/RESET)       ;
-;                                GND --| GND         D0 |-- PD0 (HW_RX)        ;
-;                                    --| VIN         D1 |-- PD1                ;
-;                                      |   +--------+   |                      ;
-;                                      |   |  ICSP  |   |                      ;
-;                                      +---+--------+---+                      ;
+; ATtiny10 simulation:                     Arduino Nano                        ;
+; --------------------                  +---+--------+---+                     ;
+; UART_RX   -> SW_RX / HW_RX            |   |Mini USB|   |                     ;
+; PWM_OUT_L -> T1_PWM_A                 |   +--------+   |                     ;
+; PWM_OUT_R -> T1_PWM_B     (LED) PB5 --| D13        D12 |-- PB4 (STEREO_MODE) ;
+; MCU clock -> Int 8 Mhz              --| 3V3       ~D11 |-- PB3 (T2_PWM_A)    ;
+;                                     --| REF       ~D10 |-- PB2 (T1_PWM_B)    ;
+; ATtiny25 simulation:            PC0 --| A0         ~D9 |-- PB1 (T1_PWM_A)    ;
+; --------------------            PC1 --| A1          D8 |-- PB0 (CHIP_SELECT) ;
+; UART_RX   -> SW_RX / HW_RX      PC2 --| A2          D7 |-- PD7               ;
+; PWM_OUT_L -> T2_PWM_A           PC3 --| A3         ~D6 |-- PD6 (T0_PWM_A)    ;
+; PWM_OUT_R -> T2_PWM_B           PC4 --| A4         ~D5 |-- PD5 (T0_PWM_B)    ;
+; MCU clock -> Ext 16 Mhz         PC5 --| A5          D4 |-- PD4               ;
+;                                     --| A6         ~D3 |-- PD3 (T2_PWM_B)    ;
+;                                     --| A7          D2 |-- PD2 (SW_RX)       ;
+;                                 VCC --| 5V         GND |-- GND               ;
+;                        (/RESET) PC6 --| RST        RST |-- PC6 (/RESET)      ;
+;                                 GND --| GND         D0 |-- PD0 (HW_RX)       ;
+;                                     --| VIN         D1 |-- PD1 (HW_TX)       ;
+;                                       |   +--------+   |                     ;
+;                                       |   |  ICSP  |   |                     ;
+;                                       +---+--------+---+                     ;
 ;                                                                              ;
 
 ; ==============================================================================
@@ -63,9 +63,9 @@
 
     data_reg_mask()
     data_amp_4bit(MAX_AMP)
-.if ENV_STEPS == 32
+   .if      (ENV_STEPS == 32)
     data_amp_5bit(MAX_AMP)
-.endif
+   .endif
     data_envelopes(ENV_STEPS)
 
 ; ==============================================================================
@@ -140,10 +140,18 @@ main:
     stio    TCCR2B, AL              ; Fast PWM with no prescaling
 #endif
 
-    ; Setup everything else and start emulation
+    ; Setup stereo mode and chip select pins
+    cbi     DDRB,  PORTB4           ; Set PORTB4 as input and
+    sbi     PORTB, PORTB4           ; enable pull-up resistor
+    cbi     DDRB,  PORTB0           ; Set PORTB0 as input and
+    sbi     PORTB, PORTB0           ; enable pull-up resistor
+
+    ; Setup debug probes
     DEF_PROBE(UART_START, C, 0)
     DEF_PROBE(UART_DELAY, C, 1)
     DEF_PROBE(UART_STORE, C, 2)
+
+    ; Setup everything else and start emulation
     code_setup_and_start_emulator()
 
     ; Software UART implementation
@@ -154,7 +162,7 @@ main:
     code_hw_uart_data_isr(UDR0)
 
 loop:
-    ; Waiting for timer overflow and samples output
+    ; Waiting for timer overflow and performing output
 #if defined(SIM_T10)
     code_sync_and_out(TIFR1, TOV1, OCR1AL, OCR1BL)  ; 6
 #elif defined(SIM_T25)
@@ -162,22 +170,15 @@ loop:
 #endif
 
     ; Update tone, noise and envelope generators
-    ldi     AL, U_STEP                              ; 1
-    code_update_tone(a_period, a_counter, AFFBIT)   ; 30-18
-    code_update_tone(b_period, b_counter, BFFBIT)   ; 30-18
-    code_update_tone(c_period, c_counter, CFFBIT)   ; 30-18
-    code_reset_envelope()                           ; 16-3
-    code_update_noise_envelope(ENV_STEPS)           ; TODO: 324-116 / ?-?
+    code_update_tones()                             ; 91-55
+    code_reinit_envelope()                          ; 16-3
+    code_update_noise_envelope(ENV_STEPS)           ; ???
     code_apply_mixer()                              ; 7
 
-    ; Compute channels samples and stereo/mono output
-    ldi     BL, low(P(amp_4bit))                    ; 1
+    ; Compute amplitudes and stereo output
     code_compute_envelope_amp(ENV_STEPS)            ; 5
-    code_compute_channel_amp(a_volume, AFFBIT, XL)  ; 11-8
-    code_compute_channel_amp(b_volume, BFFBIT, BH)  ; 11-8
-    code_compute_channel_amp(c_volume, CFFBIT, XH)  ; 11-8
-    code_compute_output_sample(STEREO_ABC)          ; 3
-    rjmp    loop                                    ; 2
+    code_compute_channels_amp()                     ; 34-25
+    code_compute_output(PORTB, PORTB4)              ; 8-7
 
 ; ==============================================================================
 ; SRAM

@@ -27,7 +27,9 @@
     .org    0x0000
     rjmp    main
     .org    INT0addr
-    rjmp    sw_uart_rx_isr
+    rjmp    sw_uart_sbit_isr
+    .org    ADCCaddr
+    rjmp    sw_uart_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -78,34 +80,28 @@ main:
     code_setup_and_start_emulator()
 
     ; Software UART implementation
-    code_sw_uart_rx_isr(PINB, PORTB2)
+    code_sw_uart_sbit_isr()
+    code_sw_uart_dbit_isr(PINB, PORTB2)
 
 loop:
-    ; Waiting for timer overflow and samples output
+    ; Waiting for timer overflow and performing output
     code_sync_and_out(TIFR, TOV0, OCR1A, OCR1B)     ; 6
 
     ; Update tone, noise and envelope generators
-    ldi     AL, U_STEP                              ; 1
-    code_update_tone(a_period, a_counter, AFFBIT)   ; 30-18
-    code_update_tone(b_period, b_counter, BFFBIT)   ; 30-18
-    code_update_tone(c_period, c_counter, CFFBIT)   ; 30-18
-    code_reset_envelope()                           ; 16-3
+    code_update_tones()                             ; 91-55
+    code_reinit_envelope()                          ; 16-3
     code_update_noise_envelope(32)                  ; 324-116
     code_apply_mixer()                              ; 7
 
-    ; Compute channels samples and stereo/mono output
-    ldi     BL, low(P(amp_4bit))                    ; 1
+    ; Compute amplitudes and stereo output
     code_compute_envelope_amp(32)                   ; 5
-    code_compute_channel_amp(a_volume, AFFBIT, XL)  ; 11-8
-    code_compute_channel_amp(b_volume, BFFBIT, BH)  ; 11-8
-    code_compute_channel_amp(c_volume, CFFBIT, XH)  ; 11-8
-    code_compute_output_sample(STEREO_ABC)          ; 3
-    rjmp    loop                                    ; 2
+    code_compute_channels_amp()                     ; 34-25
+    code_compute_output_abc()                       ; 5
 
-    ; max cycles: 6+1+3*30+16+324+7+5+1+3*11+3+2=488 (+13%)
-    ; min cycles: 6+1+3*18+3+116+7+5+1+3*8+3+2=222   (-48%)
-    ; avg cycles: (488+222)/2=355                    (-18%)
-    ; ovf period: 355*1.3=462, chosen 432 (8x54)
+    ; max cycles: 6+91+16+324+7+5+34+5=488 (+13%)
+    ; min cycles: 6+55+3+116+7+5+25+5=222  (-48%)
+    ; avg cycles: (488+222)/2=355          (-18%)
+    ; ovf period: 355*1.3=462, chosen 432  (8x54)
 
 ; ==============================================================================
 ; SRAM

@@ -26,7 +26,9 @@
     .org    0x0000
     rjmp    main
     .org    INT0addr
-    rjmp    sw_uart_rx_isr
+    rjmp    sw_uart_sbit_isr
+    .org    ADCCaddr
+    rjmp    sw_uart_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -66,39 +68,33 @@ main:
     ldi     AL, high(S_CYCLES-1)    ; timer top defined by ICR0
     stio    ICR0H, AL               ; Set high byte of 16-bit value
     ldi     AL, low(S_CYCLES-1)     ; then continue with low byte
-    stio     ICR0L, AL
+    stio    ICR0L, AL
 
     ; Setup everything else and start emulation
     code_setup_and_start_emulator()
 
     ; Software UART implementation
-    code_sw_uart_rx_isr(PINB, PORTB2)
+    code_sw_uart_sbit_isr()
+    code_sw_uart_dbit_isr(PINB, PORTB2)
 
 loop:
-    ; Waiting for timer overflow and samples output
+    ; Waiting for timer overflow and performing output
     code_sync_and_out(TIFR0, TOV0, OCR0AL, OCR0BL)  ; 6
 
     ; Update tone, noise and envelope generators
-    ldi     AL, U_STEP                              ; 1
-    code_update_tone(a_period, a_counter, AFFBIT)   ; 24-12
-    code_update_tone(b_period, b_counter, BFFBIT)   ; 24-12
-    code_update_tone(c_period, c_counter, CFFBIT)   ; 24-12
-    code_reset_envelope()                           ; 12-3
+    code_update_tones()                             ; 73-37
+    code_reinit_envelope()                          ; 12-3
     code_update_noise_envelope(16)                  ; 167-63
     code_apply_mixer()                              ; 6
 
-    ; Compute channels samples and stereo/mono output
-    ldi     BL, low(P(amp_4bit))                    ; 1
+    ; Compute amplitudes and stereo output
     code_compute_envelope_amp(16)                   ; 4
-    code_compute_channel_amp(a_volume, AFFBIT, XL)  ; 9-7
-    code_compute_channel_amp(b_volume, BFFBIT, BH)  ; 9-7
-    code_compute_channel_amp(c_volume, CFFBIT, XH)  ; 9-7
-    code_compute_output_sample(STEREO_ABC)          ; 3
-    rjmp    loop                                    ; 2
+    code_compute_channels_amp()                     ; 28-22
+    code_compute_output_abc()                       ; 5
 
-    ; max cycles: 6+1+3*24+12+167+6+4+1+3*9+3+2=301 (+03%)
-    ; min cycles: 6+1+3*12+3+63+6+4+1+3*7+3+2=146   (-50%)
-    ; avg cycles: (301+146)/2=224                   (-23%)
+    ; max cycles: 6+73+12+167+6+4+28+5=301 (+03%)
+    ; min cycles: 6+37+3+63+6+4+22+5=146   (-50%)
+    ; avg cycles: (301+146)/2=224          (-23%)
     ; ovf period: 224*1.3=291, chosen 292
 
 ; ==============================================================================

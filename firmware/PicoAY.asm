@@ -3,7 +3,7 @@
 ; - Auto mute chip using WDT when there is no UART communication
 ; - Disable all unused hardware to reduce power consumption
 ; - PSG chip selection using dedicated pin (high - Chip #0, low - Chip #1)
-; - PSG stereo mode selection using dedicated pin (high - ABC, low - ACB)
+; + PSG stereo mode selection using dedicated pin (high - ABC, low - ACB)
 
 ; ==============================================================================
 ; GLOBAL DEFINES
@@ -460,12 +460,23 @@ exit_tone:
 #define code_update_tone(PERIOD, COUNTER, CHANNEL) \
 __update_tone PERIOD, COUNTER, CHANNEL
 
+.macro __update_tones
+    ; AVR8L:  73-37
+    ; V2/V2E: 91-55
+    ldi     AL, U_STEP              ; 1
+    code_update_tone(a_period, a_counter, AFFBIT)
+    code_update_tone(b_period, b_counter, BFFBIT)
+    code_update_tone(c_period, c_counter, CFFBIT)
+.endmacro
+#define code_update_tones() \
+__update_tones
+
 ; RESET ENVELOPE GENERATOR -----------------------------------------------------
-.macro __reset_envelope
+.macro __reinit_envelope
     ; AVR8L:  12-3
     ; V2/V2E: 16-3
     sbrs    flags, EG_RES           ; 1|2 Skip next instruction if no need to
-    rjmp    exit_envelope_reset     ; 2   reset envelope generator
+    rjmp    reinit_exit             ; 2   reset envelope generator
     cbr     flags, M(EG_RES)        ; 1   Clear request for reset envelope
     sts     L(e_counter), ZERO      ; 1~2 Reset envelope counter
     sts     H(e_counter), ZERO      ; 1~2
@@ -474,10 +485,10 @@ __update_tone PERIOD, COUNTER, CHANNEL
     lsl     e_gen                   ; 1
     ldi     ZL, low(P(envelopes)+1) ; 1   Init envelope step with value from
     ldp     e_stp, e_gen            ; 3~4 envelope generator table
-exit_envelope_reset:
+reinit_exit:
 .endmacro
-#define code_reset_envelope() \
-__reset_envelope
+#define code_reinit_envelope() \
+__reinit_envelope
 
 ; UPDATE NOISE AND ENVELOPE GENERATORS -----------------------------------------
 .macro __update_noise_envelope
@@ -608,7 +619,7 @@ __apply_mixer
 #define code_compute_envelope_amp(STEPS) \
 __compute_envelope_amp STEPS
 
-; COMPUTE CHANNEL SAMPLE -------------------------------------------------------
+; COMPUTE CHANNEL AMPLITUDE ----------------------------------------------------
 .macro __compute_channel_amp
     ; AL envelope amplitude
     ; AH mixer output
@@ -630,33 +641,65 @@ use_envelope:
 #define code_compute_channel_amp(VOLUME, CHANNEL, AMP) \
 __compute_channel_amp VOLUME, CHANNEL, AMP
 
-; COMPUTE STEREO 8-BIT PER CHANNEL OUTPUT --------------------------------------
-   .equ     STEREO_ABC = 1          ;
-   .equ     STEREO_ACB = 2          ;
+.macro __compute_channels_amp
+    ; AL envelope amplitude
+    ; AH mixer output
+    ; XL channel A amplitude
+    ; BH channel B amplitude
+    ; XH channel C amplitude
+    ; AVR8L:  28-22
+    ; V2/V2E: 34-25
+    ldi     BL, low(P(amp_4bit))    ; 1
+    code_compute_channel_amp(a_volume, AFFBIT, XL)
+    code_compute_channel_amp(b_volume, BFFBIT, BH)
+    code_compute_channel_amp(c_volume, CFFBIT, XH)
+.endmacro
+#define code_compute_channels_amp() \
+__compute_channels_amp
 
-.macro __compute_output_sample
+; COMPUTE STEREO 8-BIT PER CHANNEL OUTPUT --------------------------------------
+.macro __compute_output_abc
     ; XL channel A amplitude -> stereo L sample
     ; BH channel B amplitude
     ; XH channel C amplitude -> stereo R sample
-    ; @0 output type
-   .if      (@0 == STEREO_ABC)
-    ; AVR8L:  3
-    ; V2/V2E: 3
+    ; AVR8L:  5
+    ; V2/V2E: 5
     lsr     BH                      ; 1   Divide B channel amplitude by 2
     add     XL, BH                  ; 1   Left  = Add B channel to A channel
     add     XH, BH                  ; 1   Right = Add B channel to C channel
-   .elif    (@0 == STEREO_ACB)
-    ; AVR8L:  3
-    ; V2/V2E: 3
+    rjmp    loop                    ; 2
+.endmacro
+#define code_compute_output_abc \
+__compute_output_abc
+
+.macro __compute_output_acb
+    ; XL channel A amplitude -> stereo L sample
+    ; BH channel B amplitude
+    ; XH channel C amplitude -> stereo R sample
+    ; AVR8L:  5
+    ; V2/V2E: 5
     lsr     XH                      ; 1   Divide C channel amplitude by 2
     add     XL, XH                  ; 1   Left  = Add C channel to A channel
     add     XH, BH                  ; 1   Right = Add C channel to B channel
-   .else
-   .error   "Unknown output type"
-   .endif
+    rjmp    loop                    ; 2
 .endmacro
-#define code_compute_output_sample(TYPE) \
-__compute_output_sample TYPE
+#define code_compute_output_acb \
+__compute_output_acb
+
+.macro __compute_output
+    ; XL channel A amplitude -> stereo L sample
+    ; BH channel B amplitude
+    ; XH channel C amplitude -> stereo R sample
+    ; AVR8L:  8-7
+    ; V2/V2E: 8-7
+    sbis @0, @1                     ; 1|2 1 - default output mode (ABC),
+    rjmp output_alternative         ; 2   0 - alternative output mode (ACB)
+    code_compute_output_abc()       ; 5   Default output implementation
+output_alternative:
+    code_compute_output_acb()       ; 5   Alternative output implementation
+.endmacro
+#define code_compute_output(PORT, PBIT) \
+__compute_output PORT, PBIT
 
 ; ==============================================================================
 ; SRAM BLOCKS

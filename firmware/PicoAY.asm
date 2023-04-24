@@ -692,8 +692,8 @@ __compute_output_acb
     ; XH channel C amplitude -> stereo R sample
     ; AVR8L:  8-7
     ; V2/V2E: 8-7
-    sbis @0, @1                     ; 1|2 1 - default output mode (ABC),
-    rjmp output_alternative         ; 2   0 - alternative output mode (ACB)
+    sbis    @0, @1                  ; 1|2 1 - default output mode (ABC),
+    rjmp    output_alternative      ; 2   0 - alternative output mode (ACB)
     code_compute_output_abc()       ; 5   Default output implementation
 output_alternative:
     code_compute_output_acb()       ; 5   Alternative output implementation

@@ -178,7 +178,7 @@ loop:
     ; Compute amplitudes and stereo output
     code_compute_envelope_amp(ENV_STEPS)            ; 5
     code_compute_channels_amp()                     ; 34-25
-    code_compute_output(PORTB, PORTB4)              ; 8-7
+    code_compute_output(PINB, PORTB4)               ; 8-7
 
 ; ==============================================================================
 ; SRAM

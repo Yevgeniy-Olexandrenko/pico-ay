@@ -187,8 +187,8 @@ envelopes: __envelopes STEPS
 .macro ldio
     ; @0 destination CPU register
     ; @1 source I/O register
-    ; AVR8L:  1
-    ; V2/V2E: 2-1
+    ; AVR8L_0: 1
+    ; V2/V2E:  2-1
    .if      (@1 < 0x40)
     in      @0, @1                  ; 1   I/O register
    .elif    (@1 >= 0x60 && @1 < SRAM_START)
@@ -202,8 +202,8 @@ envelopes: __envelopes STEPS
 .macro stio
     ; @0 destination I/O register
     ; @1 source CPU register
-    ; AVR8L:  1
-    ; V2/V2E: 2-1
+    ; AVR8L_0: 1
+    ; V2/V2E:  2-1
    .if      (@0 < 0x40)
     out     @0, @1                  ; 1   I/O register
    .elif    (@0 >= 0x60 && @0 < SRAM_START)
@@ -218,8 +218,8 @@ envelopes: __envelopes STEPS
     ; ZL table base or displasement
     ; @0 destination register
     ; @1 displacement or table base
-    ; AVR8L:  3
-    ; V2/V2E: 4
+    ; AVR8L_0: 3
+    ; V2/V2E:  4
 #if __CORE_AVR8L_0__
     add     ZL, @1                  ; 1   Add table base with displacement
     ld      @0, Z                   ; 2   Load indirrect from Z
@@ -257,7 +257,7 @@ __setup_sram
 
 ; SET Z POINTER TO FIRST 256 BYTES OF FLASH TO ASSESS DATA ---------------------
 .macro __setup_data_access
-   .ifdef   MAPPED_FLASH_START
+   .if      defined(MAPPED_FLASH_START)
     ldi     ZH, high(MAPPED_FLASH_START)
    .else
     ldi     ZH, 0x00
@@ -268,11 +268,16 @@ __setup_data_access
 
 ; SETUP PORT PIN AS INPUT WITH PULL-UP -----------------------------------------
 .macro __setup_input_pullup
-    cbi     @0, @2                  ; Set port as input
+    ; @0 DDRx
+    ; @1 PORTx
+    ; @2 PORTxn
+    ; @3 PUEx
+    ; @4 PUExn
+    cbi     @0, @2                  ;     Set port as input
    .if      defined(@3)
-    sbi     @3, @4                  ; Enable pull-up resistor using PUEx
+    sbi     @3, @4                  ;     Enable pull-up resistor using PUEx
    .else
-    sbi     @1, @2                  ; Enable pull-up resistor using PORTx
+    sbi     @1, @2                  ;     Enable pull-up resistor using PORTx
    .endif
 .endmacro
 #define code_setup_input_pullup(P, B) \
@@ -280,12 +285,14 @@ __setup_input_pullup DDR##P, PORT##P, PORT##P##B, PUE##P, PUE##P##B
 
 ; SETUP SOFTWARE UART RX -------------------------------------------------------
 .macro __setup_sw_uart_int0
-    ldi     AL, M(ISC01)            ; Falling edge of INT0 generates an
-    stio    @0, AL                  ; interrupt request
-    ldi     AL, M(INT0)             ; Allow INT0 ISR execution
+    ; @0 External interrupt INT0 mode register
+    ; @1 External interrupt INT0 enable register
+    ldi     AL, M(ISC01)            ;     Falling edge of INT0 generates an
+    stio    @0, AL                  ;     interrupt request
+    ldi     AL, M(INT0)             ;     Allow INT0 ISR execution
     stio    @1, AL                  ;
-    ldi     AL, M(ADEN) | M(ADSC)   ; Enable ADC, set min prescaler and start
-    stio    ADCSRA, AL              ; conversion to achieve stable 13 cycles
+    ldi     AL, M(ADEN) | M(ADSC)   ;     Enable ADC, set min prescaler & start
+    stio    ADCSRA, AL              ;     conversion to achieve stable 13 cycles
 .endmacro
 #define code_setup_sw_uart_int0(EIMR, EIER) \
 __setup_sw_uart_int0 EIMR, EIER
@@ -337,7 +344,7 @@ __handle_uart_data
    .equ     ADC_DURATION = (F_CPU * 13 / 1000000)
    .equ     BIT_EX_DELAY = ((BIT_DURATION - ADC_DURATION - 36) / 3)
 
-; TODO: write techical aspects of the implementation
+    ; TODO: write techical aspects of the implementation
 
 .macro __sw_uart_int0_sbit_isr
    .if      (F_CPU != 16000000 && F_CPU != 8000000)
@@ -434,8 +441,8 @@ hw_uart_data_isr: __hw_uart_data_isr UART
     ; @1 mcu timer overflow flag bit in register
     ; @2 PWM channel A
     ; @3 PWM channel B
-    ; AVR8L:  6-4
-    ; V2/V2E: 6-4
+    ; AVR8L_0: 6-4
+    ; V2/V2E:  6-4
     ldio    AL, @0                  ; 1   Check timer overflow flag
     sbrs    AL, @1                  ; 1|2 Skip next instruction if flag is set
     rjmp    loop                    ; 2   otherwise jump to the loop beginning
@@ -452,8 +459,8 @@ __sync_and_out TOVF_R, TOVF_F, PWM_A, PWM_B
     ; @0 channel tone period
     ; @1 channel tone counter
     ; @2 channel bit
-    ; AVR8L:  24-12
-    ; V2/V2E: 30-18
+    ; AVR8L_0: 24-12
+    ; V2/V2E:  30-18
     lds     XL, L(@0)               ; 1~2 Load tone period from SRAM
     lds     XH, H(@0)               ; 1~2 Tone period high byte
     lds     YL, L(@1)               ; 1~2 Load tone counter from SRAM
@@ -485,8 +492,8 @@ exit_tone:
 __update_tone PERIOD, COUNTER, CHANNEL
 
 .macro __update_tones
-    ; AVR8L:  73-37
-    ; V2/V2E: 91-55
+    ; AVR8L_0: 73-37
+    ; V2/V2E:  91-55
     ldi     AL, U_STEP              ; 1
     code_update_tone(a_period, a_counter, AFFBIT)
     code_update_tone(b_period, b_counter, BFFBIT)
@@ -497,8 +504,8 @@ __update_tones
 
 ; RESET ENVELOPE GENERATOR -----------------------------------------------------
 .macro __reinit_envelope
-    ; AVR8L:  12-3
-    ; V2/V2E: 16-3
+    ; AVR8L_0: 12-3
+    ; V2/V2E:  16-3
     sbrs    flags, EG_RES           ; 1|2 Skip next instruction if no need to
     rjmp    reinit_exit             ; 2   reset envelope generator
     cbr     flags, M(EG_RES)        ; 1   Clear request for reset envelope
@@ -516,28 +523,55 @@ __reinit_envelope
 
 ; UPDATE NOISE AND ENVELOPE GENERATORS -----------------------------------------
 .macro __update_noise_envelope
-    ; 16 step envelope, max update step is 0x04:
-    ; AVR8L:  167-63
-    ; 8 + U_STEP * (16 + 20 + 3) + 3
-    ; 8 + U_STEP * (4 + 6 + 3) + 3
-    ; V2/V2E: 186-74
-    ; 15 + U_STEP * (16 + 22 + 3) + 7
-    ; 15 + U_STEP * (4 + 6 + 3) + 7
-    
-    ; 32 step envelope, max update step is 0x08:
-    ; AVR8L:  324-116
-    ; 9 + U_STEP * (16 + 20 + 3) + 3 
-    ; 9 + U_STEP * (4 + 6 + 3) + 3 
-    ; V2/V2E: 351-127
-    ; 16 + U_STEP * (16 + 22 + 3) + 7 
-    ; 16 + U_STEP * (4 + 6 + 3) + 7
+    ; +---+---------------+---------------+
+    ; | U |32 steps       |16 steps       |
+    ; | S |-------+-------|-------+-------|
+    ; | T |AVR8L_0|V2/V2E |AVR8L_0|V2/V2E |
+    ; | E |---+---|---+---|---+---|---+---|
+    ; | P |max|min|max|min|max|min|max|min|
+    ; |---|---|---|---|---|---|---|---|---|
+    ; | A |402|142|433|153|206|76 |227|87 |
+    ; |---|---|---|---|---|---|---|---|---|
+    ; | 9 |363|129|392|140| - | - | - | - |
+    ; |---|---|---|---|---|---|---|---|---|
+    ; | 8 |324|116|351|127|167|63 |186|74 |
+    ; |---|---|---|---|---|---|---|---|---|
+    ; | 7 |285|103|310|114| - | - | - | - |
+    ; |---|---|---|---|---|---|---|---|---|
+    ; | 6 |246|90 |269|101|128|50 |145|61 |
+    ; |---|---|---|---|---|---|---|---|---|
+    ; | 5 |207|77 |228|88 | - | - | - | - |
+    ; |---|---|---|---|---|---|---|---|---|
+    ; | 4 |168|64 |187|75 |89 |37 |104|48 |
+    ; |---|---|---|---|---|---|---|---|---|
+    ; | 3 |129|51 |146|62 | - | - | - | - |
+    ; |---|---|---|---|---|---|---|---|---|
+    ; | 2 |90 |38 |105|49 |50 |24 |63 |35 |
+    ; |---|---|---|---|---|---|---|---|---|
+    ; | 1 |51 |25 |64 |36 | - | - | - | - |
+    ; +---+---+---+---+---+---+---+---+---+
+
+    ; 32 step envelope:
+    ;   AVR8L_0:
+    ;       max: 9  + U_STEP * (16 + 20 + 3) + 3 = U_STEP * 39 + 12
+    ;       min: 9  + U_STEP * (4  + 6  + 3) + 3 = U_STEP * 13 + 12
+    ;   V2/V2E:
+    ;       max: 16 + U_STEP * (16 + 22 + 3) + 7 = U_STEP * 41 + 23
+    ;       min: 16 + U_STEP * (4  + 6  + 3) + 7 = U_STEP * 13 + 23
+    ; 16 step envelope:
+    ;   AVR8L_0:
+    ;       max: 8  + (U_STEP / 2) * (16 + 20 + 3) + 3 = (U_STEP / 2) * 39 + 11
+    ;       min: 8  + (U_STEP / 2) * (4  + 6  + 3) + 3 = (U_STEP / 2) * 13 + 11
+    ;   V2/V2E:
+    ;       max: 15 + (U_STEP / 2) * (16 + 22 + 3) + 7 = (U_STEP / 2) * 41 + 22
+    ;       min: 15 + (U_STEP / 2) * (4  + 6  + 3) + 7 = (U_STEP / 2) * 13 + 22
 
    .if      (@0 != 16 && @0 != 32)
    .error   "Unknown number of steps for envelope"
    .endif
     ; Read state from SRAM and init loop
-    ; AVR8L:  9-9
-    ; V2/V2E: 16-16
+    ; AVR8L_0: 9-9
+    ; V2/V2E:  16-16
     lds     XL, L(e_period)         ; 1~2 Load envelope peiod from SRAM
     lds     XH, H(e_period)         ; 1~2 Envelope period high byte
     lds     YL, L(e_counter)        ; 1~2 Load envelope counter from SRAM
@@ -557,8 +591,8 @@ __reinit_envelope
 update_loop:
 
     ; Update noise generator
-    ; AVR8L:  16-4
-    ; V2/V2E: 16-4
+    ; AVR8L_0: 16-4
+    ; V2/V2E:  16-4
     cp      n_cnt, AL               ; 1   Compare counter against period
     brlo    exit_noise              ; 1|2 Skip following if counter < period
     clr     n_cnt                   ; 1   Reset counter
@@ -578,8 +612,8 @@ exit_noise:
     inc     n_cnt                   ; 1   counter = counter + 1
 
     ; Update envelope generator
-    ; AVR8L:  20-6 
-    ; V2/V2E: 22-6
+    ; AVR8L_0: 20-6 
+    ; V2/V2E:  22-6
     cp      YL, XL                  ; 1   Compare counter against period
     cpc     YH, XH                  ; 1
     brlo    exit_envelope           ; 1|2 Skip following if counter < period
@@ -598,8 +632,8 @@ exit_envelope:
     ld      ZL, Y+                  ; 2   counter = counter + 1
 
     ; Go to the next iteration or exit
-    ; AVR8L:  6-3 
-    ; V2/V2E: 10-3
+    ; AVR8L_0: 6-3 
+    ; V2/V2E:  10-3
     dec     AH                      ; 1   Decrement iteration counter and
     brne    update_loop             ; 1|2 go to next interation
     sts     L(n_shifter), BL        ; 1~2 Save noise shifter into SRAM
@@ -613,8 +647,8 @@ __update_noise_envelope STEPS
 ; APPLY MIXER FLAGS AND COMPUTE TONE/NOISE LEVELS ------------------------------
 .macro __apply_mixer
     ; AH tone/noise level bits output
-    ; AVR8L:  6
-    ; V2/V2E: 7
+    ; AVR8L_0: 6
+    ; V2/V2E:  7
     lds     AH, mixer               ; 1~2 Mixer: xxCB.Acba (CBA:Noise, cba:Tone)
     or      AH, flags               ; 1   Apply disables:  xxCB.Acba | xxNN.Ncba
     mov     AL, AH                  ; 1
@@ -628,8 +662,8 @@ __apply_mixer
 ; COMPUTE ENVELOPE SAMPLE ------------------------------------------------------
 .macro __compute_envelope_amp
     ; AL envelope amplitude
-    ; AVR8L:  4
-    ; V2/V2E: 5
+    ; AVR8L_0: 4
+    ; V2/V2E:  5
    .if      (@0 != 16 && @0 != 32)
    .error   "Unknown number of steps for envelope"
    .endif
@@ -651,8 +685,8 @@ __compute_envelope_amp STEPS
     ; @0 channel volume
     ; @1 channel bit
     ; @2 output amplitude
-    ; AVR8L:  9-7
-    ; V2/V2E: 11-8
+    ; AVR8L_0: 9-7
+    ; V2/V2E:  11-8
     mov     @2, AL                  ; 1   Use envelope amplitude by default
     lds     ZL, @0                  ; 1~2 volume+envelope flag from PSG register
     bst     ZL, bit4                ; 1   Check if envelope enabled in this
@@ -671,8 +705,8 @@ __compute_channel_amp VOLUME, CHANNEL, AMP
     ; XL channel A amplitude
     ; BH channel B amplitude
     ; XH channel C amplitude
-    ; AVR8L:  28-22
-    ; V2/V2E: 34-25
+    ; AVR8L_0: 28-22
+    ; V2/V2E:  34-25
     ldi     BL, low(P(amp_4bit))    ; 1
     code_compute_channel_amp(a_volume, AFFBIT, XL)
     code_compute_channel_amp(b_volume, BFFBIT, BH)
@@ -686,8 +720,8 @@ __compute_channels_amp
     ; XL channel A amplitude -> stereo L sample
     ; BH channel B amplitude
     ; XH channel C amplitude -> stereo R sample
-    ; AVR8L:  5
-    ; V2/V2E: 5
+    ; AVR8L_0: 5
+    ; V2/V2E:  5
     lsr     BH                      ; 1   Divide B channel amplitude by 2
     add     XL, BH                  ; 1   Left  = Add B channel to A channel
     add     XH, BH                  ; 1   Right = Add B channel to C channel
@@ -700,8 +734,8 @@ __compute_output_abc
     ; XL channel A amplitude -> stereo L sample
     ; BH channel B amplitude
     ; XH channel C amplitude -> stereo R sample
-    ; AVR8L:  5
-    ; V2/V2E: 5
+    ; AVR8L_0: 5
+    ; V2/V2E:  5
     lsr     XH                      ; 1   Divide C channel amplitude by 2
     add     XL, XH                  ; 1   Left  = Add C channel to A channel
     add     XH, BH                  ; 1   Right = Add C channel to B channel
@@ -714,8 +748,8 @@ __compute_output_acb
     ; XL channel A amplitude -> stereo L sample
     ; BH channel B amplitude
     ; XH channel C amplitude -> stereo R sample
-    ; AVR8L:  8-7
-    ; V2/V2E: 8-7
+    ; AVR8L_0: 8-7
+    ; V2/V2E:  8-7
     sbis    @0, @1                  ; 1|2 1 - default output mode (ABC),
     rjmp    output_alternative      ; 2   0 - alternative output mode (ACB)
     code_compute_output_abc()       ; 5   Default output implementation

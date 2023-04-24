@@ -88,18 +88,18 @@ loop:
     ; Update tone, noise and envelope generators
     code_update_tones()                             ; 91-55
     code_reinit_envelope()                          ; 16-3
-    code_update_noise_envelope(32)                  ; 324-116
+    code_update_noise_envelope(32)                  ; 269-101
     code_apply_mixer()                              ; 7
 
     ; Compute amplitudes and stereo output
     code_compute_envelope_amp(32)                   ; 5
     code_compute_channels_amp()                     ; 34-25
-    code_compute_output(B, 3)                       ; 5
+    code_compute_output(B, 3)                       ; 8-7
 
-    ; max cycles: 6+91+16+324+7+5+34+5=488 (+13%)
-    ; min cycles: 6+55+3+116+7+5+25+5=222  (-48%)
-    ; avg cycles: (488+222)/2=355          (-18%)
-    ; ovf period: 355*1.3=462, chosen 432  (8x54)
+    ; max cycles: 6+91+16+269+7+5+34+8=436 (+01%)
+    ; min cycles: 6+55+3+101+7+5+25+7=209  (-52%)
+    ; avg cycles: (436+209)/2=323          (-25%)
+    ; ovf period: 323*1.3=420, chosen 432
 
 ; ==============================================================================
 ; SRAM

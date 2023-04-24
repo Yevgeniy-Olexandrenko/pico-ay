@@ -27,9 +27,9 @@
     .org    0x0000
     rjmp    main
     .org    INT0addr
-    rjmp    sw_uart_sbit_isr
+    rjmp    sw_uart_int0_sbit_isr
     .org    ADCCaddr
-    rjmp    sw_uart_dbit_isr
+    rjmp    sw_uart_int0_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -48,21 +48,17 @@ main:
     code_setup_sram()
     code_setup_data_access()
 
-    ; Setup external interrupt INT0 on PB2 for UART RX
-    cbi     DDRB,  PORTB2           ; Set PORTB2 as input
-    sbi     PORTB, PORTB2           ; Enable pull-up resistor on PORTB2
-    ldi     AL, M(ISC01)            ; Falling edge of INT0 generates an
-    stio    MCUCR, AL               ; interrupt request
-    ldi     AL, M(INT0)             ; Allow INT0 ISR execution
-    stio    GIMSK, AL               ;
-
-    ; Setup Timer0 for CTC with OCRA top
-    ldi     AL, M(WGM01)            ; CTC mode
+    ; Setup Timer0 for Phase Correct PWM 8-bit with OCRA top
+    ldi     AL, M(WGM00)            ;
     stio    TCCR0A, AL              ;
-    ldi     AL, M(CS01)             ; F/8 prescaler
+    ldi     AL, M(WGM02) | M(CS00)  ;
     stio    TCCR0B, AL              ;
-    ldi     AL, ((S_CYCLES/8)-1)    ;
+    ldi     AL, ((S_CYCLES/2)-1)    ;
     stio    OCR0A, AL               ;
+
+    ; Setup software UART RX
+    code_setup_input_pullup(B, 2)
+    code_setup_sw_uart_int0(MCUCR, GIMSK)
 
     ; Setup Time1 for High Speed PWM 8-bit with 0xFF top
     sbi     DDRB, PORTB1            ; Set PORTB1 and PORTB4 as output
@@ -77,11 +73,13 @@ main:
     stio    OCR1C, AL
 
     ; Setup everything else and start emulation
+    code_setup_input_pullup(B, 0)   ; Setup chip select pin
+    code_setup_input_pullup(B, 3)   ; Setup stereo mode pin
     code_setup_and_start_emulator()
 
     ; Software UART implementation
-    code_sw_uart_sbit_isr()
-    code_sw_uart_dbit_isr(PINB, PORTB2)
+    code_sw_uart_int0_sbit_isr(GIMSK)
+    code_sw_uart_int0_dbit_isr(B, 2, GIFR, GIMSK)
 
 loop:
     ; Waiting for timer overflow and performing output
@@ -96,7 +94,7 @@ loop:
     ; Compute amplitudes and stereo output
     code_compute_envelope_amp(32)                   ; 5
     code_compute_channels_amp()                     ; 34-25
-    code_compute_output_abc()                       ; 5
+    code_compute_output(B, 3)                       ; 5
 
     ; max cycles: 6+91+16+324+7+5+34+5=488 (+13%)
     ; min cycles: 6+55+3+116+7+5+25+5=222  (-48%)

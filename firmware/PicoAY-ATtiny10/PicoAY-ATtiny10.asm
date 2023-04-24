@@ -26,9 +26,9 @@
     .org    0x0000
     rjmp    main
     .org    INT0addr
-    rjmp    sw_uart_sbit_isr
+    rjmp    sw_uart_int0_sbit_isr
     .org    ADCCaddr
-    rjmp    sw_uart_dbit_isr
+    rjmp    sw_uart_int0_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -51,12 +51,9 @@ main:
     stio    CCP, AL                 ; Change Protection register and set clock
     stio    CLKPSR, ZERO            ; division factor to 1 for 8 MHz
 
-    ; Setup external interrupt INT0 on PB2 for UART RX
-    cbi     DDRB,  PORTB2           ; Set PORTB2 as input
-    sbi     PUEB,  PUEB2            ; Enable pull-up resistor on PORTB2
-    cbi     EICRA, ISC00            ; Falling edge of INT0 generates an
-    sbi     EICRA, ISC01            ; interrupt request
-    sbi     EIMSK, INT0             ; Allow INT0 ISR execution
+    ; Setup software UART RX
+    code_setup_input_pullup(B, 2)
+    code_setup_sw_uart_int0(EICRA, EIMSK)
 
     ; Setup Timer0 for Fast PWM 8-bit with ICR0 top
     sbi     DDRB, PORTB0            ; Set PORTB0 and PORTB1 as output
@@ -74,8 +71,8 @@ main:
     code_setup_and_start_emulator()
 
     ; Software UART implementation
-    code_sw_uart_sbit_isr()
-    code_sw_uart_dbit_isr(PINB, PORTB2)
+    code_sw_uart_int0_sbit_isr(EIMSK)
+    code_sw_uart_int0_dbit_isr(B, 2, EIFR, EIMSK)
 
 loop:
     ; Waiting for timer overflow and performing output

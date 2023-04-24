@@ -51,11 +51,11 @@
     .org    0x0000
     rjmp    main
     .org    INT0addr
-    rjmp    sw_uart_sbit_isr
+    rjmp    sw_uart_int0_sbit_isr
     .org    URXCaddr
     rjmp    hw_uart_data_isr
     .org    ADCCaddr
-    rjmp    sw_uart_dbit_isr
+    rjmp    sw_uart_int0_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -84,19 +84,10 @@ main:
     stio    CLKPR, AL               ;
    .endif
 
-#if 1
-    ; Setup external interrupt INT0 on PD2 (RX) for software UART
-    cbi     DDRD,  PORTD2           ; Set PORTD2 as input
-    sbi     PORTD, PORTD2           ; Enable pull-up resistor on PORTD2
-    ldi     AL, M(ISC01)            ; Falling edge of INT0 generates an
-    stio    EICRA, AL               ; interrupt request
-    ldi     AL, M(INT0)             ; Allow INT0 ISR execution
-    stio    EIMSK, AL               ;
+    ; Setup software UART RX
+    code_setup_input_pullup(D, 2)
+    code_setup_sw_uart_int0(EICRA, EIMSK)
 
-    ; Setup ADC to use as background delay for software UART
-    ldi     AL, M(ADEN) | M(ADSC)   ; Enable ADC, set min prescaler and start
-    stio    ADCSRA, AL              ; conversion to achieve stable 13 cycles
-#endif
     ; Setup hardware UART RX
     .equ    UBRR = (F_CPU / 8 / BAUD_RATE - 1)
     ldi     AL, high(UBRR)          ;
@@ -140,23 +131,19 @@ main:
     stio    TCCR2B, AL              ; Fast PWM with no prescaling
 #endif
 
-    ; Setup stereo mode and chip select pins
-    cbi     DDRB,  PORTB4           ; Set PORTB4 as input and
-    sbi     PORTB, PORTB4           ; enable pull-up resistor
-    cbi     DDRB,  PORTB0           ; Set PORTB0 as input and
-    sbi     PORTB, PORTB0           ; enable pull-up resistor
-
     ; Setup debug probes
     DEF_PROBE(UART_START, C, 0)
     DEF_PROBE(UART_DELAY, C, 1)
     DEF_PROBE(UART_STORE, C, 2)
 
     ; Setup everything else and start emulation
+    code_setup_input_pullup(B, 0)   ; Setup chip select pin
+    code_setup_input_pullup(B, 4)   ; Setup stereo mode pin
     code_setup_and_start_emulator()
 
     ; Software UART implementation
-    code_sw_uart_sbit_isr()
-    code_sw_uart_dbit_isr(PIND, PORTD2)
+    code_sw_uart_int0_sbit_isr(EIMSK)
+    code_sw_uart_int0_dbit_isr(D, 2, EIFR, EIMSK)
 
     ; Hardware UART implementation
     code_hw_uart_data_isr(UDR0)
@@ -178,7 +165,7 @@ loop:
     ; Compute amplitudes and stereo output
     code_compute_envelope_amp(ENV_STEPS)            ; 5
     code_compute_channels_amp()                     ; 34-25
-    code_compute_output(PINB, PORTB4)               ; 8-7
+    code_compute_output(B, 4)                       ; 8-7
 
 ; ==============================================================================
 ; SRAM

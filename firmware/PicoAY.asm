@@ -247,7 +247,7 @@ sram_clear_loop:                    ;
     brne    sram_clear_loop         ;
     ldi     AL, low(RAMEND)         ;
     stio    SPL, AL                 ;
-   .ifdef   SPH
+   .if      defined(SPH)
     ldi     AL, high(RAMEND)        ;
     stio    SPH, AL                 ;
    .endif
@@ -265,6 +265,30 @@ __setup_sram
 .endmacro
 #define code_setup_data_access() \
 __setup_data_access
+
+; SETUP PORT PIN AS INPUT WITH PULL-UP -----------------------------------------
+.macro __setup_input_pullup
+    cbi     @0, @2                  ; Set port as input
+   .if      defined(@3)
+    sbi     @3, @4                  ; Enable pull-up resistor using PUEx
+   .else
+    sbi     @1, @2                  ; Enable pull-up resistor using PORTx
+   .endif
+.endmacro
+#define code_setup_input_pullup(P, B) \
+__setup_input_pullup DDR##P, PORT##P, PORT##P##B, PUE##P, PUE##P##B
+
+; SETUP SOFTWARE UART RX -------------------------------------------------------
+.macro __setup_sw_uart_int0
+    ldi     AL, M(ISC01)            ; Falling edge of INT0 generates an
+    stio    @0, AL                  ; interrupt request
+    ldi     AL, M(INT0)             ; Allow INT0 ISR execution
+    stio    @1, AL                  ;
+    ldi     AL, M(ADEN) | M(ADSC)   ; Enable ADC, set min prescaler and start
+    stio    ADCSRA, AL              ; conversion to achieve stable 13 cycles
+.endmacro
+#define code_setup_sw_uart_int0(EIMR, EIER) \
+__setup_sw_uart_int0 EIMR, EIER
 
 ; SETUP EVERYTHING ELSE AND START EMULATOR -------------------------------------
 .macro __setup_and_start_emulator
@@ -315,7 +339,7 @@ __handle_uart_data
 
 ; TODO: write techical aspects of the implementation
 
-.macro __sw_uart_sbit_isr
+.macro __sw_uart_int0_sbit_isr
    .if      (F_CPU != 16000000 && F_CPU != 8000000)
    .error   "CPU clock must be 16 or 8 Mhz"
    .endif
@@ -326,16 +350,16 @@ __handle_uart_data
     ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
    .endif
     stio    ADCSRA, YH              ;     Set prescale and start conversion
-    stio    EIMSK, ZERO             ;     Disable INT0 ISR execution
+    stio    @0, ZERO                ;     Disable INT0 ISR execution
     ldi     YH, 0x80                ;     Init UART data shift register
     sts     uart_data, YH           ;
     CLR_PROBE(UART_DELAY)
     reti                            ;
 .endmacro
-#define code_sw_uart_sbit_isr() \
-sw_uart_sbit_isr: __sw_uart_sbit_isr
+#define code_sw_uart_int0_sbit_isr(EIER) \
+sw_uart_int0_sbit_isr: __sw_uart_int0_sbit_isr EIER
 
-.macro __sw_uart_dbit_isr
+.macro __sw_uart_int0_dbit_isr
     ; @0 mcu port for UART RX input
     ; @1 mcu port bit number of UART RX pin
    .if      (F_CPU != 16000000 && F_CPU != 8000000)
@@ -372,9 +396,9 @@ handle_uart_data:
     pop     YL                      ;
     SET_PROBE(UART_STORE)
     ldi     YH, M(INTF0)            ;     Clear any pending INT0 ISR
-    stio    EIFR, YH                ;
+    stio    @2, YH                  ;
     ldi     YH, M(INT0)             ;     Allow INT0 ISR execution
-    stio    EIMSK, YH               ;
+    stio    @3, YH                  ;
     SET_PROBE(UART_DELAY)
     SET_PROBE(UART_START)
 exit_isr:
@@ -383,8 +407,8 @@ exit_isr:
     pop     YH                      ;
     reti                            ;
 .endmacro
-#define code_sw_uart_dbit_isr(PORT, PBIT) \
-sw_uart_dbit_isr: __sw_uart_dbit_isr PORT, PBIT
+#define code_sw_uart_int0_dbit_isr(P, B, EIFR, EIER) \
+sw_uart_int0_dbit_isr: __sw_uart_int0_dbit_isr PIN##P, PORT##P##B, EIFR, EIER
 
 ; HARDWARE UART DATA RECEIVE ---------------------------------------------------
 .macro __hw_uart_data_isr
@@ -698,8 +722,8 @@ __compute_output_acb
 output_alternative:
     code_compute_output_acb()       ; 5   Alternative output implementation
 .endmacro
-#define code_compute_output(PORT, PBIT) \
-__compute_output PORT, PBIT
+#define code_compute_output(P, B) \
+__compute_output PIN##P, PORT##P##B
 
 ; ==============================================================================
 ; SRAM BLOCKS

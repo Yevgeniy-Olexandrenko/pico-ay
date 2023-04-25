@@ -283,22 +283,8 @@ __setup_data_access
 #define code_setup_input_pullup(P, B) \
 __setup_input_pullup DDR##P, PORT##P, PORT##P##B, PUE##P, PUE##P##B
 
-; SETUP SOFTWARE UART RX -------------------------------------------------------
-.macro __setup_sw_uart_int0
-    ; @0 External interrupt INT0 mode register
-    ; @1 External interrupt INT0 enable register
-    ldi     AL, M(ISC01)            ;     Falling edge of INT0 generates an
-    stio    @0, AL                  ;     interrupt request
-    ldi     AL, M(INT0)             ;     Allow INT0 ISR execution
-    stio    @1, AL                  ;
-    ldi     AL, M(ADEN) | M(ADSC)   ;     Enable ADC, set min prescaler & start
-    stio    ADCSRA, AL              ;     conversion to achieve stable 13 cycles
-.endmacro
-#define code_setup_sw_uart_int0(EIMR, EIER) \
-__setup_sw_uart_int0 EIMR, EIER
-
-; SETUP EVERYTHING ELSE AND START EMULATOR -------------------------------------
-.macro __setup_and_start_emulator
+; SETUP EVERYTHING ELSE AND START GENERATION -----------------------------------
+.macro __setup_and_start_generation
     ldi     flags, M(NS_B16) | M(EG_RES)
     ldi     raddr, M(WF_REG)        ;     Wait the register address to write
     mov     XL, ZERO                ;     Load zero to left output sample
@@ -306,8 +292,8 @@ __setup_sw_uart_int0 EIMR, EIER
     sei                             ;     Enable interrupts
     rjmp    loop                    ;     Go to main loop
 .endmacro
-#define code_setup_and_start_emulator() \
-__setup_and_start_emulator
+#define code_setup_and_start_generation() \
+__setup_and_start_generation
 
 ; HANDLE UART RECEIVED DATA ACCORDING TO PROTOCOL ------------------------------
 .macro __handle_uart_data
@@ -345,6 +331,19 @@ __handle_uart_data
    .equ     BIT_EX_DELAY = ((BIT_DURATION - ADC_DURATION - 36) / 3)
 
     ; TODO: write techical aspects of the implementation
+
+.macro __setup_sw_uart_int0
+    ; @0 External interrupt INT0 mode register
+    ; @1 External interrupt INT0 enable register
+    ldi     AL, M(ISC01)            ;     Falling edge of INT0 generates an
+    stio    @0, AL                  ;     interrupt request
+    ldi     AL, M(INT0)             ;     Allow INT0 ISR execution
+    stio    @1, AL                  ;
+    ldi     AL, M(ADEN) | M(ADSC)   ;     Enable ADC, set min prescaler & start
+    stio    ADCSRA, AL              ;     conversion to achieve stable 13 cycles
+.endmacro
+#define code_setup_sw_uart_int0(EIMR, EIER) \
+__setup_sw_uart_int0 EIMR, EIER
 
 .macro __sw_uart_int0_sbit_isr
    .if      (F_CPU != 16000000 && F_CPU != 8000000)
@@ -502,7 +501,7 @@ __update_tone PERIOD, COUNTER, CHANNEL
 #define code_update_tones() \
 __update_tones
 
-; RESET ENVELOPE GENERATOR -----------------------------------------------------
+; REINIT ENVELOPE GENERATOR ----------------------------------------------------
 .macro __reinit_envelope
     ; AVR8L_0: 12-3
     ; V2/V2E:  16-3
@@ -659,7 +658,7 @@ __update_noise_envelope STEPS
 #define code_apply_mixer() \
 __apply_mixer
 
-; COMPUTE ENVELOPE SAMPLE ------------------------------------------------------
+; COMPUTE ENVELOPE AMPLITUDE ---------------------------------------------------
 .macro __compute_envelope_amp
     ; AL envelope amplitude
     ; AVR8L_0: 4

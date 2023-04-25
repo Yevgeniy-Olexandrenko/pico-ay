@@ -136,10 +136,10 @@ main:
     DEF_PROBE(UART_DELAY, C, 1)
     DEF_PROBE(UART_STORE, C, 2)
 
-    ; Setup everything else and start emulation
+    ; Setup everything else and start generation
     code_setup_input_pullup(B, 0)   ; Setup chip select pin
     code_setup_input_pullup(B, 4)   ; Setup stereo mode pin
-    code_setup_and_start_emulator()
+    code_setup_and_start_generation()
 
     ; Software UART implementation
     code_sw_uart_int0_sbit_isr(EIMSK)

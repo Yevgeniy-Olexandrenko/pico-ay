@@ -72,10 +72,10 @@ main:
     ldi     AL, 0xFF
     stio    OCR1C, AL
 
-    ; Setup everything else and start emulation
+    ; Setup everything else and start generation
     code_setup_input_pullup(B, 0)   ; Setup chip select pin
     code_setup_input_pullup(B, 3)   ; Setup stereo mode pin
-    code_setup_and_start_emulator()
+    code_setup_and_start_generation()
 
     ; Software UART implementation
     code_sw_uart_int0_sbit_isr(GIMSK)

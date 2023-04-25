@@ -67,8 +67,8 @@ main:
     ldi     AL, low(S_CYCLES-1)     ; then continue with low byte
     stio    ICR0L, AL
 
-    ; Setup everything else and start emulation
-    code_setup_and_start_emulator()
+    ; Setup everything else and start generation
+    code_setup_and_start_generation()
 
     ; Software UART implementation
     code_sw_uart_int0_sbit_isr(EIMSK)

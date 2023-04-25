@@ -43,6 +43,106 @@
 
     .include "../PicoAY.asm"
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+.macro __osccal_pcint_isr
+    sbic    PORTD, PORTD2           ; Check pin level (low/high)
+    rjmp    hi_level_triggered      ; Skip if clear (low level)
+    clr     AL                      ; Reset timer counter
+    stio    TCNT0, AL               ;
+    ldi     AL, TOV0                ; Reset overflow flag
+    stio    TIFR0, AL               ;
+    ldi     AL, M(CS00)             ; Start timer counting
+    stio    TCCR0B, AL              ;
+    rjmp    isr_exit                ; Exit ISR
+hi_level_triggered:
+    clr     AL                      ; Stop timer counting
+    stio    TCCR0B, AL
+    tst     AH                      ; Checks if measurement has been
+    breq    isr_exit                ; completed
+    push    BL                      ; Save BL/BH
+    push    BH                      ;
+    ldio    BL, TCNT0               ; Get counter low byte from timer, get
+    clr     BH                      ; counter high byte from overflow flag
+    ldio    AL, TIFR0               ; If overflow is set, then add 256 to
+    sbrc    AL, TOV0                ; final value of 16-bit counter
+    inc     BH                      ;
+    cp      XL, BL                  ; Compare with lowest measured value
+    cpc     XH, BH                  ;
+    brlo    hi_level_exit           ; XL/XH < BL/BH
+    mov     XL, BL                  ; Update with new lowest measured value
+    mov     XH, BH                  ;
+hi_level_exit:
+    dec     AH                      ; Decrement measurement counter
+    pop     BH                      ; Restore BL/BH
+    pop     BL                      ;
+isr_exit:
+    reti                            ; Exit ISR
+.endmacro
+#define code_osccal_pcint_isr() \
+osccal_pcint_isr: __osccal_pcint_isr
+
+.macro __osccal_uart_bit_duration
+    sbis    PORTD, PORTD2           ; Wait for pin level goes high then
+    rjmp    measure_bit_duration    ; start new measurement
+    ldi     XL, 0xFF                ; Set lowest value as top of
+    ldi     XH, 0xFF                ; 16-bit value
+    ldi     AH, 16                  ; Number of bit duration measurements
+    sei                             ; Enable interrupts
+wait_for_measurement:
+    tst     AH                      ; Check if measurement has been
+    brne    wait_for_measurement    ; completed
+    cli                             ; Disable interrupts
+    ret                             ; Return
+.endmacro
+#define code_osccal_uart_bit_duration() \
+osccal_uart_bit_duration: __osccal_uart_bit_duration
+
+.macro __calibrate_system_clock
+    ldi     AL, M(PCINT18)          ; INT0/PCINT18 pin
+    stio    PCMSK2, AL              ; Enable pin change interrupt
+    ldi     YL, 128                 ; step
+    ldi     YH, 0                   ; trialValue
+calibration_loop:
+    ; update calibration with new value
+    mov     AL, YH                  ; OSCCAL = trialValue + step
+    add     AL, YL                  ;
+    stio    OSCCAL, AL              ;
+    ; update calibration
+    rcall   osccal_uart_bit_duration
+    subi    XL, low (BIT_DURATION)  ; Compare measured bit duration against
+    sbci    XH, high(BIT_DURATION)  ; the target one
+    brsh    osc_to_high             ; XL/XH >= BL/BH (measured >= target)
+    add     YH, YL                  ; trialValue = trialValue + step
+osc_to_high:
+    lsr     YL                      ; step = step >> 1
+    brne    calibration_loop        ;
+    ; neighborhood search
+    dec     YH                      ; trialValue - 1
+    ldi     YL, 3                   ; from trialValue - 1 to trialValue + 1
+    stio    OSCCAL, YH              ;
+    ; update calibration
+    rcall   osccal_uart_bit_duration
+    subi    XL, low (BIT_DURATION)  ; x = measured - target
+    sbci    XH, high(BIT_DURATION)  ; the target one
+    ; TODO
+
+    ; update calibration with final value
+    stio    OSCCAL, YH              ; OSCCAL = optimumValue (trialValue)
+    ; exit
+    clr     AL                      ;
+    stio    PCMSK2, AL              ; Disable pin change interrupt
+    ret
+.endmacro
+#define code_calibrate_system_clock() \
+__calibrate_system_clock
+
+
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ; ==============================================================================
 ; FLASH
 ; ==============================================================================
@@ -52,6 +152,8 @@
     rjmp    main
     .org    INT0addr
     rjmp    sw_uart_int0_sbit_isr
+    .org    PCI2addr
+    rjmp    osccal_pcint_isr
     .org    URXCaddr
     rjmp    hw_uart_data_isr
     .org    ADCCaddr
@@ -83,6 +185,9 @@ main:
     ldi     AL, M(CLKPS0)           ;
     stio    CLKPR, AL               ;
    .endif
+
+    ; Calibrate system clock using UART signal
+    code_calibrate_system_clock()
 
     ; Setup software UART RX
     code_setup_input_pullup(D, 2)
@@ -140,6 +245,10 @@ main:
     code_setup_input_pullup(B, 0)   ; Setup chip select pin
     code_setup_input_pullup(B, 4)   ; Setup stereo mode pin
     code_setup_and_start_generation()
+
+    ; System clock calibration implementation
+    code_osccal_pcint_isr()
+    code_osccal_uart_bit_duration()
 
     ; Software UART implementation
     code_sw_uart_int0_sbit_isr(EIMSK)

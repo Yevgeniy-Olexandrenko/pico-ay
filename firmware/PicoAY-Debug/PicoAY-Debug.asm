@@ -46,6 +46,10 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 .macro __osccal_pcint_isr
+    ; AL changed, general usage
+    ; AH measurement counter
+    ; XL bit duration in cpu cycles (low byte)
+    ; XH bit duration in cpu cycles (high byte)
     sbic    PORTD, PORTD2           ; Check pin level (low/high)
     rjmp    hi_level_triggered      ; Skip if clear (low level)
     clr     AL                      ; Reset timer counter
@@ -83,6 +87,9 @@ isr_exit:
 osccal_pcint_isr: __osccal_pcint_isr
 
 .macro __osccal_uart_bit_duration
+    ; AH measurement counter
+    ; XL bit duration in cpu cycles (low byte)
+    ; XH bit duration in cpu cycles (high byte)
     sbis    PORTD, PORTD2           ; Wait for pin level goes high then
     rjmp    measure_bit_duration    ; start new measurement
     ldi     XL, 0xFF                ; Set lowest value as top of
@@ -98,11 +105,12 @@ wait_for_measurement:
 #define code_osccal_uart_bit_duration() \
 osccal_uart_bit_duration: __osccal_uart_bit_duration
 
-.macro __calibrate_system_clock
+.macro __calibrate_internal_oscillator
     ldi     AL, M(PCINT18)          ; INT0/PCINT18 pin
     stio    PCMSK2, AL              ; Enable pin change interrupt
     ldi     YL, 128                 ; step
     ldi     YH, 0                   ; trialValue
+
 calibration_loop:
     ; update calibration with new value
     mov     AL, YH                  ; OSCCAL = trialValue + step
@@ -117,25 +125,47 @@ calibration_loop:
 osc_to_high:
     lsr     YL                      ; step = step >> 1
     brne    calibration_loop        ;
+    
     ; neighborhood search
+    mov     ZL, YH                  ; optimumValue = trialValue
+    mov     BL, XL                  ; optimumDev = x
+    mov     BH, XH                  ;
     dec     YH                      ; trialValue - 1
     ldi     YL, 3                   ; from trialValue - 1 to trialValue + 1
+
+clibration_loop2:
     stio    OSCCAL, YH              ;
     ; update calibration
     rcall   osccal_uart_bit_duration
     subi    XL, low (BIT_DURATION)  ; x = measured - target
-    sbci    XH, high(BIT_DURATION)  ; the target one
-    ; TODO
-
+    sbci    XH, high(BIT_DURATION)  ;
+    brsh    delta_positive          ;
+    clr     AL                      ; x = -x
+    clr     AH                      ;
+    sub     AL, XL                  ;
+    sbc     AH, XH                  ;
+    mov     XL, AL                  ;
+    mov     XH, AH                  ;
+delta_positive:
+    cp      XL, BL                  ; if(x < optimumDev)
+    cpc     XH, BH                  ;
+    brsh    delta_larger            ; x >= optimumDev
+    mov     BL, XL                  ; x <  optimumDev
+    mov     BH, XH                  ; optimumDev = x;
+    mov     ZL, YH                  ; optimumValue = OSCCAL;
+delta_larger:
+    inc     YH                      ; 
+    dec     YL                      ;
+    brne    clibration_loop2
     ; update calibration with final value
-    stio    OSCCAL, YH              ; OSCCAL = optimumValue (trialValue)
+    stio    OSCCAL, ZL              ; OSCCAL = optimumValue
     ; exit
     clr     AL                      ;
     stio    PCMSK2, AL              ; Disable pin change interrupt
     ret
 .endmacro
-#define code_calibrate_system_clock() \
-__calibrate_system_clock
+#define code_calibrate_internal_oscillator() \
+__calibrate_internal_oscillator
 
 
 
@@ -187,7 +217,7 @@ main:
    .endif
 
     ; Calibrate system clock using UART signal
-    code_calibrate_system_clock()
+    code_calibrate_internal_oscillator()
 
     ; Setup software UART RX
     code_setup_input_pullup(D, 2)

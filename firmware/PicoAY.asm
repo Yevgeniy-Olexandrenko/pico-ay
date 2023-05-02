@@ -65,7 +65,8 @@
    .equ     probe_##name##_pi = PIN##port       \
    .equ     probe_##name##_po = PORT##port      \
    .equ     probe_##name##_pb = PORT##port##bit \
-    sbi     DDR##port, PORT##port##bit
+    sbi     PORT##port, PORT##port##bit         \
+    sbi     DDR##port,  PORT##port##bit
 
 .macro __set_probe
    .if      (defined(@0) && defined(@1))

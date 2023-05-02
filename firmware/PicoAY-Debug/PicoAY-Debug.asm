@@ -27,6 +27,10 @@
 ; DEFINES
 ; ==============================================================================
 
+#define INTERNAL_OSCILLATOR     1
+#define SOFTWARE_UART_PROBES    0
+#define INTOSC_CALIBR_PROBES    1
+
 #if defined(SIM_T10)
     .equ    F_CPU     = 8000000
     .equ    F_PSG     = 1750000
@@ -50,7 +54,7 @@
     ; AH measurement counter
     ; XL bit duration in cpu cycles (low byte)
     ; XH bit duration in cpu cycles (high byte)
-    sbic    PORTD, PORTD2           ; Check pin level (low/high)
+    sbic    PIND, PORTD2            ; Check pin level (low/high)
     rjmp    hi_level_triggered      ; Skip if clear (low level)
     clr     AL                      ; Reset timer counter
     stio    TCNT0, AL               ;
@@ -78,6 +82,7 @@ hi_level_triggered:
     mov     XH, BH                  ;
 hi_level_exit:
     dec     AH                      ; Decrement measurement counter
+    TGL_PROBE(MS_LVL)
     pop     BH                      ; Restore BL/BH
     pop     BL                      ;
 isr_exit:
@@ -90,11 +95,12 @@ osccal_pcint_isr: __osccal_pcint_isr
     ; AH measurement counter
     ; XL bit duration in cpu cycles (low byte)
     ; XH bit duration in cpu cycles (high byte)
-    sbis    PORTD, PORTD2           ; Wait for pin level goes high then
-    rjmp    measure_bit_duration    ; start new measurement
     ldi     XL, 0xFF                ; Set lowest value as top of
     ldi     XH, 0xFF                ; 16-bit value
     ldi     AH, 16                  ; Number of bit duration measurements
+measure_bit_duration:
+    sbis    PORTD, PORTD2           ; Wait for pin level goes high then
+    rjmp    measure_bit_duration    ; start new measurement
     sei                             ; Enable interrupts
 wait_for_measurement:
     tst     AH                      ; Check if measurement has been
@@ -106,16 +112,20 @@ wait_for_measurement:
 osccal_uart_bit_duration: __osccal_uart_bit_duration
 
 .macro __calibrate_internal_oscillator
+    CLR_PROBE(IN_OUT)
     ldi     AL, M(PCINT18)          ; INT0/PCINT18 pin
     stio    PCMSK2, AL              ; Enable pin change interrupt
+    ldi     AL, M(PCIE2)
+    stio    PCICR, AL
+
     ldi     YL, 128                 ; step
     ldi     YH, 0                   ; trialValue
-
 calibration_loop:
     ; update calibration with new value
     mov     AL, YH                  ; OSCCAL = trialValue + step
     add     AL, YL                  ;
     stio    OSCCAL, AL              ;
+    TGL_PROBE(WR_CAL)
     ; update calibration
     rcall   osccal_uart_bit_duration
     subi    XL, low (BIT_DURATION)  ; Compare measured bit duration against
@@ -125,7 +135,8 @@ calibration_loop:
 osc_to_high:
     lsr     YL                      ; step = step >> 1
     brne    calibration_loop        ;
-    
+
+#if 0
     ; neighborhood search
     mov     ZL, YH                  ; optimumValue = trialValue
     mov     BL, XL                  ; optimumDev = x
@@ -159,10 +170,12 @@ delta_larger:
     brne    clibration_loop2
     ; update calibration with final value
     stio    OSCCAL, ZL              ; OSCCAL = optimumValue
+#endif
     ; exit
     clr     AL                      ;
+    stio    PCICR, AL               ;
     stio    PCMSK2, AL              ; Disable pin change interrupt
-    ret
+    SET_PROBE(IN_OUT)
 .endmacro
 #define code_calibrate_internal_oscillator() \
 __calibrate_internal_oscillator
@@ -180,14 +193,16 @@ __calibrate_internal_oscillator
 .cseg
     .org    0x0000
     rjmp    main
-    .org    INT0addr
-    rjmp    sw_uart_int0_sbit_isr
+//    .org    INT0addr
+//    rjmp    sw_uart_int0_sbit_isr
+#if INTERNAL_OSCILLATOR
     .org    PCI2addr
     rjmp    osccal_pcint_isr
-    .org    URXCaddr
-    rjmp    hw_uart_data_isr
-    .org    ADCCaddr
-    rjmp    sw_uart_int0_dbit_isr
+#endif
+//    .org    URXCaddr
+//    rjmp    hw_uart_data_isr
+//    .org    ADCCaddr
+//    rjmp    sw_uart_int0_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -208,33 +223,52 @@ main:
     code_setup_sram()
     code_setup_data_access()
 
-    ; Setup system clock devider 2 to make 8 MHz from 16 MHz
-   .if      (F_CPU == 8000000)
-    ldi     AL, M(CLKPCE)           ;
-    stio    CLKPR, AL               ;
-    ldi     AL, M(CLKPS0)           ;
-    stio    CLKPR, AL               ;
-   .endif
+//#if !INTERNAL_OSCILLATOR
+//    ; Setup system clock devider 2 to make 8 MHz from 16 MHz
+//   .if      (F_CPU == 8000000)
+//    ldi     AL, M(CLKPCE)           ;
+//    stio    CLKPR, AL               ;
+//    ldi     AL, M(CLKPS0)           ;
+//    stio    CLKPR, AL               ;
+//   .endif
+//#endif
 
+#if INTERNAL_OSCILLATOR
+#if INTOSC_CALIBR_PROBES
+    ; Setup internal oscillator calibration debug probes
+    DEF_PROBE(IN_OUT, C, 0)
+    DEF_PROBE(MS_LVL, C, 1)
+    DEF_PROBE(WR_CAL, C, 2)
+#endif
     ; Calibrate system clock using UART signal
+    cli
+    code_setup_input_pullup(D, 2)
     code_calibrate_internal_oscillator()
+#endif
+
+#if SOFTWARE_UART_PROBES
+    ; Setup software UART debug probes
+    DEF_PROBE(UART_START, C, 0)
+    DEF_PROBE(UART_DELAY, C, 1)
+    DEF_PROBE(UART_STORE, C, 2)
+#endif
 
     ; Setup software UART RX
-    code_setup_input_pullup(D, 2)
-    code_setup_sw_uart_int0(EICRA, EIMSK)
+//    code_setup_input_pullup(D, 2)
+//    code_setup_sw_uart_int0(EICRA, EIMSK)
 
     ; Setup hardware UART RX
-    .equ    UBRR = (F_CPU / 8 / BAUD_RATE - 1)
-    ldi     AL, high(UBRR)          ;
-    stio    UBRR0H, AL              ;
-    ldi     AL, low(UBRR)           ;
-    stio    UBRR0L, AL              ;
-    ldi     AL, M(U2X0)             ;
-    stio    UCSR0A, AL              ;
-    ldi     AL, M(RXCIE0) | M(RXEN0)
-    stio    UCSR0B, AL              ;
-    ldi     AL, M(UCSZ01) | M(UCSZ00)
-    stio    UCSR0C, AL              ;
+//    .equ    UBRR = (F_CPU / 8 / BAUD_RATE - 1)
+//    ldi     AL, high(UBRR)          ;
+//    stio    UBRR0H, AL              ;
+//    ldi     AL, low(UBRR)           ;
+//    stio    UBRR0L, AL              ;
+//    ldi     AL, M(U2X0)             ;
+//    stio    UCSR0A, AL              ;
+//    ldi     AL, M(RXCIE0) | M(RXEN0)
+//    stio    UCSR0B, AL              ;
+//    ldi     AL, M(UCSZ01) | M(UCSZ00)
+//    stio    UCSR0C, AL              ;
 
 #if defined(SIM_T10)
     ; Setup Timer1 for Fast PWM 8-bit with ICR1 top
@@ -266,26 +300,23 @@ main:
     stio    TCCR2B, AL              ; Fast PWM with no prescaling
 #endif
 
-    ; Setup debug probes
-    DEF_PROBE(UART_START, C, 0)
-    DEF_PROBE(UART_DELAY, C, 1)
-    DEF_PROBE(UART_STORE, C, 2)
-
     ; Setup everything else and start generation
     code_setup_input_pullup(B, 0)   ; Setup chip select pin
     code_setup_input_pullup(B, 4)   ; Setup stereo mode pin
     code_setup_and_start_generation()
 
+#if INTERNAL_OSCILLATOR
     ; System clock calibration implementation
     code_osccal_pcint_isr()
     code_osccal_uart_bit_duration()
+#endif
 
     ; Software UART implementation
-    code_sw_uart_int0_sbit_isr(EIMSK)
-    code_sw_uart_int0_dbit_isr(D, 2, EIFR, EIMSK)
+//    code_sw_uart_int0_sbit_isr(EIMSK)
+//    code_sw_uart_int0_dbit_isr(D, 2, EIFR, EIMSK)
 
     ; Hardware UART implementation
-    code_hw_uart_data_isr(UDR0)
+//    code_hw_uart_data_isr(UDR0)
 
 loop:
     ; Waiting for timer overflow and performing output

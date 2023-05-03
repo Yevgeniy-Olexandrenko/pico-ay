@@ -55,34 +55,30 @@
     ; XL bit duration in cpu cycles (low byte)
     ; XH bit duration in cpu cycles (high byte)
     sbic    PIND, PORTD2            ; Check pin level (low/high)
-    rjmp    hi_level_triggered      ; Skip if clear (low level)
-    clr     AL                      ; Reset timer counter
-    stio    TCNT0, AL               ;
-    ldi     AL, TOV0                ; Reset overflow flag
-    stio    TIFR0, AL               ;
-    ldi     AL, M(CS00)             ; Start timer counting
-    stio    TCCR0B, AL              ;
+    rjmp    high_level_triggered    ; Skip if clear (low level)
+    stio    TCNT1H, ZERO            ; Reset timer counter
+    stio    TCNT1L, ZERO            ;
+    ldi     AL, M(CS10)             ; Start timer counting
+    stio    TCCR1B, AL              ;
     rjmp    isr_exit                ; Exit ISR
-hi_level_triggered:
-    clr     AL                      ; Stop timer counting
-    stio    TCCR0B, AL
+
+high_level_triggered:
+    stio    TCCR1B, ZERO            ; Stop timer counting
     tst     AH                      ; Checks if measurement has been
     breq    isr_exit                ; completed
     push    BL                      ; Save BL/BH
     push    BH                      ;
-    ldio    BL, TCNT0               ; Get counter low byte from timer, get
-    clr     BH                      ; counter high byte from overflow flag
-    ldio    AL, TIFR0               ; If overflow is set, then add 256 to
-    sbrc    AL, TOV0                ; final value of 16-bit counter
-    inc     BH                      ;
+    ldio    BL, TCNT1L              ; Get timer counter value 
+    ldio    BH, TCNT1H              ;
     cp      XL, BL                  ; Compare with lowest measured value
     cpc     XH, BH                  ;
-    brlo    hi_level_exit           ; XL/XH < BL/BH
+    brlo    high_level_exit         ; XL/XH < BL/BH
     mov     XL, BL                  ; Update with new lowest measured value
     mov     XH, BH                  ;
-hi_level_exit:
-    dec     AH                      ; Decrement measurement counter
+
+high_level_exit:
     TGL_PROBE(MS_LVL)
+    dec     AH                      ; Decrement measurement counter
     pop     BH                      ; Restore BL/BH
     pop     BL                      ;
 isr_exit:
@@ -98,9 +94,9 @@ osccal_pcint_isr: __osccal_pcint_isr
     ldi     XL, 0xFF                ; Set lowest value as top of
     ldi     XH, 0xFF                ; 16-bit value
     ldi     AH, 16                  ; Number of bit duration measurements
-measure_bit_duration:
-    sbis    PORTD, PORTD2           ; Wait for pin level goes high then
-    rjmp    measure_bit_duration    ; start new measurement
+wait_for_high_level:
+    sbis    PIND, PORTD2            ; Wait for pin level goes high then
+    rjmp    wait_for_high_level     ; start new measurement
     sei                             ; Enable interrupts
 wait_for_measurement:
     tst     AH                      ; Check if measurement has been
@@ -138,11 +134,10 @@ osc_to_high:
 
 #if 0
     ; neighborhood search
-    mov     ZL, YH                  ; optimumValue = trialValue
-    mov     BL, XL                  ; optimumDev = x
-    mov     BH, XH                  ;
-    dec     YH                      ; trialValue - 1
+    ldi     BL, 0xFF                ; optimumDev = 0xFFFF
+    ldi     BH, 0xFF                ;
     ldi     YL, 3                   ; from trialValue - 1 to trialValue + 1
+    dec     YH                      ; trialValue - 1
 
 clibration_loop2:
     stio    OSCCAL, YH              ;
@@ -150,14 +145,14 @@ clibration_loop2:
     rcall   osccal_uart_bit_duration
     subi    XL, low (BIT_DURATION)  ; x = measured - target
     sbci    XH, high(BIT_DURATION)  ;
-    brsh    delta_positive          ;
+    brsh    positive_delta          ;
     clr     AL                      ; x = -x
     clr     AH                      ;
     sub     AL, XL                  ;
     sbc     AH, XH                  ;
     mov     XL, AL                  ;
     mov     XH, AH                  ;
-delta_positive:
+positive_delta:
     cp      XL, BL                  ; if(x < optimumDev)
     cpc     XH, BH                  ;
     brsh    delta_larger            ; x >= optimumDev
@@ -172,9 +167,8 @@ delta_larger:
     stio    OSCCAL, ZL              ; OSCCAL = optimumValue
 #endif
     ; exit
-    clr     AL                      ;
-    stio    PCICR, AL               ;
-    stio    PCMSK2, AL              ; Disable pin change interrupt
+    stio    PCICR, ZERO             ;
+    stio    PCMSK2, ZERO            ; Disable pin change interrupt
     SET_PROBE(IN_OUT)
 .endmacro
 #define code_calibrate_internal_oscillator() \

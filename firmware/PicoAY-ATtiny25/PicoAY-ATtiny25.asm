@@ -78,8 +78,8 @@ main:
     code_setup_and_start_generation()
 
     ; Software UART implementation
-    code_sw_uart_int0_sbit_isr(GIMSK)
-    code_sw_uart_int0_dbit_isr(B, 2, GIFR, GIMSK)
+    proc_sw_uart_int0_sbit_isr(GIMSK)
+    proc_sw_uart_int0_dbit_isr(B, 2, GIFR, GIMSK)
 
 loop:
     ; Waiting for timer overflow and performing output

@@ -306,11 +306,11 @@ main:
 #endif
 
     ; Software UART implementation
-//    code_sw_uart_int0_sbit_isr(EIMSK)
-//    code_sw_uart_int0_dbit_isr(D, 2, EIFR, EIMSK)
+//    proc_sw_uart_int0_sbit_isr(EIMSK)
+//    proc_sw_uart_int0_dbit_isr(D, 2, EIFR, EIMSK)
 
     ; Hardware UART implementation
-//    code_hw_uart_data_isr(UDR0)
+//    proc_hw_uart_data_isr(UDR0)
 
 loop:
     ; Waiting for timer overflow and performing output

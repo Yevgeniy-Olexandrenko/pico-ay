@@ -71,8 +71,8 @@ main:
     code_setup_and_start_generation()
 
     ; Software UART implementation
-    code_sw_uart_int0_sbit_isr(EIMSK)
-    code_sw_uart_int0_dbit_isr(B, 2, EIFR, EIMSK)
+    proc_sw_uart_int0_sbit_isr(EIMSK)
+    proc_sw_uart_int0_dbit_isr(B, 2, EIFR, EIMSK)
 
 loop:
     ; Waiting for timer overflow and performing output

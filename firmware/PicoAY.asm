@@ -363,7 +363,7 @@ __setup_sw_uart_int0 EIMR, EIER
     CLR_PROBE(UART_DELAY)
     reti                            ;
 .endmacro
-#define code_sw_uart_int0_sbit_isr(EIER) \
+#define proc_sw_uart_int0_sbit_isr(EIER) \
 sw_uart_int0_sbit_isr: __sw_uart_int0_sbit_isr EIER
 
 .macro __sw_uart_int0_dbit_isr
@@ -414,7 +414,7 @@ exit_isr:
     pop     YH                      ;
     reti                            ;
 .endmacro
-#define code_sw_uart_int0_dbit_isr(P, B, EIFR, EIER) \
+#define proc_sw_uart_int0_dbit_isr(P, B, EIFR, EIER) \
 sw_uart_int0_dbit_isr: __sw_uart_int0_dbit_isr PIN##P, PORT##P##B, EIFR, EIER
 
 ; HARDWARE UART DATA RECEIVE ---------------------------------------------------
@@ -432,7 +432,7 @@ sw_uart_int0_dbit_isr: __sw_uart_int0_dbit_isr PIN##P, PORT##P##B, EIFR, EIER
     pop     YL                      ;
     reti                            ;
 .endmacro
-#define code_hw_uart_data_isr(UART) \
+#define proc_hw_uart_data_isr(UART) \
 hw_uart_data_isr: __hw_uart_data_isr UART
 
 ; SYNCHRONIZE IN TIME AND OUTPUT PREVIOUSLY COMPUTED RESULT --------------------

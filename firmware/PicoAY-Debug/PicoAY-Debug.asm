@@ -35,7 +35,7 @@
     .equ    F_CPU     = 8000000
     .equ    F_PSG     = 1750000
     .equ    S_CYCLES  = 362;292
-    .equ    MAX_AMP   = 170
+    .equ    MAX_AMP   = ((S_CYCLES/2)*2/3)
     .equ    ENV_STEPS = 16
 #elif defined(SIM_T25)
     .equ    F_CPU     = 16000000
@@ -269,11 +269,11 @@ main:
     sbi     DDRB, PORTB2            ; for Fast PWM (OC1A and OC1B)
     ldi     AL, M(WGM11) | M(COM1A1) | M(COM1B1)
     stio    TCCR1A, AL              ; Clear OC1A/OC1B on compare match
-    ldi     AL, M(WGM12) | M(WGM13)  | M(CS10)
+    ldi     AL, M(WGM13) | M(CS10)
     stio    TCCR1B, AL              ; Fast PWM with no prescaling with
-    ldi     AL, high(S_CYCLES-1)    ; timer top defined by ICR1
+    ldi     AL, high(S_CYCLES/2-1)  ; timer top defined by ICR1
     stio    ICR1H, AL               ; Set high byte of 16-bit value
-    ldi     AL, low(S_CYCLES-1)     ; then continue with low byte
+    ldi     AL, low(S_CYCLES/2-1)   ; then continue with low byte
     stio    ICR1L, AL
 #elif defined(SIM_T25)
     ; Setup Timer0 for Phase Correct PWM 8-bit with OCRA top

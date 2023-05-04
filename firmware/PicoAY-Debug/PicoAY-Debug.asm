@@ -132,7 +132,7 @@ osc_to_high:
     lsr     YL                      ; step = step >> 1
     brne    calibration_loop        ;
 
-#if 0
+#if 1
     ; neighborhood search
     ldi     BL, 0xFF                ; optimumDev = 0xFFFF
     ldi     BH, 0xFF                ;
@@ -187,16 +187,16 @@ __calibrate_internal_oscillator
 .cseg
     .org    0x0000
     rjmp    main
-//    .org    INT0addr
-//    rjmp    sw_uart_int0_sbit_isr
+    .org    INT0addr
+    rjmp    sw_uart_int0_sbit_isr
 #if INTERNAL_OSCILLATOR
     .org    PCI2addr
     rjmp    osccal_pcint_isr
 #endif
-//    .org    URXCaddr
-//    rjmp    hw_uart_data_isr
-//    .org    ADCCaddr
-//    rjmp    sw_uart_int0_dbit_isr
+    .org    URXCaddr
+    rjmp    hw_uart_data_isr
+    .org    ADCCaddr
+    rjmp    sw_uart_int0_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -217,15 +217,15 @@ main:
     code_setup_sram()
     code_setup_data_access()
 
-//#if !INTERNAL_OSCILLATOR
-//    ; Setup system clock devider 2 to make 8 MHz from 16 MHz
-//   .if      (F_CPU == 8000000)
-//    ldi     AL, M(CLKPCE)           ;
-//    stio    CLKPR, AL               ;
-//    ldi     AL, M(CLKPS0)           ;
-//    stio    CLKPR, AL               ;
-//   .endif
-//#endif
+#if !INTERNAL_OSCILLATOR
+    ; Setup system clock devider 2 to make 8 MHz from 16 MHz
+   .if      (F_CPU == 8000000)
+    ldi     AL, M(CLKPCE)           ;
+    stio    CLKPR, AL               ;
+    ldi     AL, M(CLKPS0)           ;
+    stio    CLKPR, AL               ;
+   .endif
+#endif
 
 #if INTERNAL_OSCILLATOR
 #if INTOSC_CALIBR_PROBES
@@ -235,7 +235,6 @@ main:
     DEF_PROBE(WR_CAL, C, 2)
 #endif
     ; Calibrate system clock using UART signal
-    cli
     code_setup_input_pullup(D, 2)
     code_calibrate_internal_oscillator()
 #endif
@@ -248,21 +247,21 @@ main:
 #endif
 
     ; Setup software UART RX
-//    code_setup_input_pullup(D, 2)
-//    code_setup_sw_uart_int0(EICRA, EIMSK)
+    code_setup_input_pullup(D, 2)
+    code_setup_sw_uart_int0(EICRA, EIMSK)
 
     ; Setup hardware UART RX
-//    .equ    UBRR = (F_CPU / 8 / BAUD_RATE - 1)
-//    ldi     AL, high(UBRR)          ;
-//    stio    UBRR0H, AL              ;
-//    ldi     AL, low(UBRR)           ;
-//    stio    UBRR0L, AL              ;
-//    ldi     AL, M(U2X0)             ;
-//    stio    UCSR0A, AL              ;
-//    ldi     AL, M(RXCIE0) | M(RXEN0)
-//    stio    UCSR0B, AL              ;
-//    ldi     AL, M(UCSZ01) | M(UCSZ00)
-//    stio    UCSR0C, AL              ;
+    .equ    UBRR = (F_CPU / 8 / BAUD_RATE - 1)
+    ldi     AL, high(UBRR)          ;
+    stio    UBRR0H, AL              ;
+    ldi     AL, low(UBRR)           ;
+    stio    UBRR0L, AL              ;
+    ldi     AL, M(U2X0)             ;
+    stio    UCSR0A, AL              ;
+    ldi     AL, M(RXCIE0) | M(RXEN0)
+    stio    UCSR0B, AL              ;
+    ldi     AL, M(UCSZ01) | M(UCSZ00)
+    stio    UCSR0C, AL              ;
 
 #if defined(SIM_T10)
     ; Setup Timer1 for Fast PWM 8-bit with ICR1 top
@@ -306,11 +305,11 @@ main:
 #endif
 
     ; Software UART implementation
-//    proc_sw_uart_int0_sbit_isr(EIMSK)
-//    proc_sw_uart_int0_dbit_isr(D, 2, EIFR, EIMSK)
+    proc_sw_uart_int0_sbit_isr(EIMSK)
+    proc_sw_uart_int0_dbit_isr(D, 2, EIFR, EIMSK)
 
     ; Hardware UART implementation
-//    proc_hw_uart_data_isr(UDR0)
+    proc_hw_uart_data_isr(UDR0)
 
 loop:
     ; Waiting for timer overflow and performing output

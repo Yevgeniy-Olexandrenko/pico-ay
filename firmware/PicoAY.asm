@@ -575,8 +575,8 @@ sw_uart_int0_dbit_isr: __sw_uart_int0_dbit_isr __P, __B, __FR, __IR
     pop     YL                      ;
     reti                            ;
 .endmacro
-#define proc_hw_uart_data_isr(UART) \
-hw_uart_data_isr: __hw_uart_data_isr UART
+#define proc_hw_uart_data_isr(__UDR) \
+hw_uart_data_isr: __hw_uart_data_isr __UDR
 
 ; SYNCHRONIZE IN TIME AND OUTPUT PREVIOUSLY COMPUTED RESULT --------------------
 .macro __sync_and_out
@@ -593,8 +593,8 @@ hw_uart_data_isr: __hw_uart_data_isr UART
     stio    @2, XL                  ; 1   Output L/R channel 8-bit samples or
     stio    @3, XH                  ; 1   mono channel 16-bit sample
 .endmacro
-#define code_sync_and_out(TOVF_R, TOVF_F, PWM_A, PWM_B) \
-__sync_and_out TOVF_R, TOVF_F, PWM_A, PWM_B
+#define code_sync_and_out(__OVFR, __OVFF, __PWML, __PWMR) \
+__sync_and_out __OVFR, __OVFF, __PWML, __PWMR
 
 ; UPDATE TONE GENERATOR --------------------------------------------------------
 .macro __update_tone
@@ -631,8 +631,8 @@ exit_tone:
     sts     L(@1), YL               ; 1~2 Save tone counter into SRAM
     sts     H(@1), YH               ; 1~2 Tone counter high byte
 .endmacro
-#define code_update_tone(PERIOD, COUNTER, CHANNEL) \
-__update_tone PERIOD, COUNTER, CHANNEL
+#define code_update_tone(__PER, __CNT, __CH) \
+__update_tone __PER, __CNT, __CH
 
 .macro __update_tones
     ; AVR8L_0: 73-37
@@ -784,8 +784,8 @@ exit_envelope:
     sts     L(e_counter), YL        ; 1~2 Save envelope counter into SRAM
     sts     H(e_counter), YH        ; 1~2 Envelope counter high byte
 .endmacro
-#define code_update_noise_envelope(STEPS) \
-__update_noise_envelope STEPS
+#define code_update_noise_envelope(__STP) \
+__update_noise_envelope __STP
 
 ; APPLY MIXER FLAGS AND COMPUTE TONE/NOISE LEVELS ------------------------------
 .macro __apply_mixer
@@ -817,8 +817,8 @@ __apply_mixer
    .endif
     ldp     AL, e_stp               ; 3~4
 .endmacro
-#define code_compute_envelope_amp(STEPS) \
-__compute_envelope_amp STEPS
+#define code_compute_envelope_amp(__STP) \
+__compute_envelope_amp __STP
 
 ; COMPUTE CHANNEL AMPLITUDE ----------------------------------------------------
 .macro __compute_channel_amp
@@ -839,8 +839,8 @@ use_envelope:
     sbrs    AH, @1                  ; 1|2 If channel disabled in mixer (N and T)
     clr     @2                      ; 1   then set amplitude to zero value
 .endmacro
-#define code_compute_channel_amp(VOLUME, CHANNEL, AMP) \
-__compute_channel_amp VOLUME, CHANNEL, AMP
+#define code_compute_channel_amp(__VOL, __CH, __AMP) \
+__compute_channel_amp __VOL, __CH, __AMP
 
 .macro __compute_channels_amp
     ; AL envelope amplitude
@@ -893,14 +893,14 @@ __compute_output_acb
     ; XH channel C amplitude -> stereo R sample
     ; AVR8L_0: 8-7
     ; V2/V2E:  8-7
-    sbis    @0, @1                  ; 1|2 1 - default output mode (ABC),
+    sbis    PIN@0, PORT@0@1         ; 1|2 1 - default output mode (ABC),
     rjmp    output_alternative      ; 2   0 - alternative output mode (ACB)
     code_compute_output_abc()       ; 5   Default output implementation
 output_alternative:
     code_compute_output_acb()       ; 5   Alternative output implementation
 .endmacro
-#define code_compute_output(P, B) \
-__compute_output PIN##P, PORT##P##B
+#define code_compute_output(__P, __B) \
+__compute_output __P, __B
 
 ; ==============================================================================
 ; SRAM BLOCKS

@@ -9,6 +9,8 @@ Project("{18226A42-8477-4023-8AD2-40C49DA407C9}") = "PicoAY-ATtiny10", "PicoAY-A
 EndProject
 Project("{18226A42-8477-4023-8AD2-40C49DA407C9}") = "PicoAY-ATtiny25", "PicoAY-ATtiny25\PicoAY-ATtiny25.asmproj", "{59B1D629-9DCC-43ED-A0FD-8AB0E4D622AB}"
 EndProject
+Project("{18226A42-8477-4023-8AD2-40C49DA407C9}") = "PicoAY-ATtiny102", "PicoAY-ATtiny102\PicoAY-ATtiny102.asmproj", "{1AF7C1DE-C17D-4F13-AC8C-C41D7A2D1EAA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Release|AVR = Release|AVR
@@ -29,6 +31,10 @@ Global
 		{59B1D629-9DCC-43ED-A0FD-8AB0E4D622AB}.Release|AVR.Build.0 = Release|AVR
 		{59B1D629-9DCC-43ED-A0FD-8AB0E4D622AB}.Sim-ATtiny10|AVR.ActiveCfg = Release|AVR
 		{59B1D629-9DCC-43ED-A0FD-8AB0E4D622AB}.Sim-ATtiny25|AVR.ActiveCfg = Release|AVR
+		{1AF7C1DE-C17D-4F13-AC8C-C41D7A2D1EAA}.Release|AVR.ActiveCfg = Release|AVR
+		{1AF7C1DE-C17D-4F13-AC8C-C41D7A2D1EAA}.Release|AVR.Build.0 = Release|AVR
+		{1AF7C1DE-C17D-4F13-AC8C-C41D7A2D1EAA}.Sim-ATtiny10|AVR.ActiveCfg = Release|AVR
+		{1AF7C1DE-C17D-4F13-AC8C-C41D7A2D1EAA}.Sim-ATtiny25|AVR.ActiveCfg = Release|AVR
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

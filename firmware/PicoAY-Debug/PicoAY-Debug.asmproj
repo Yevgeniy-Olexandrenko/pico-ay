@@ -35,7 +35,7 @@
       <AvrAssembler>
   <avrasm.assembler.general.AdditionalIncludeDirectories>
     <ListValues>
-      <Value>%24(PackRepoDir)\atmel\ATmega_DFP\1.7.374\avrasm\inc</Value>
+      <Value>%24(PackRepoDir)\Atmel\ATmega_DFP\2.0.401\avrasm\inc</Value>
     </ListValues>
   </avrasm.assembler.general.AdditionalIncludeDirectories>
   <avrasm.assembler.general.OtherFlags>-DSIM_T10</avrasm.assembler.general.OtherFlags>
@@ -49,7 +49,7 @@
       <AvrAssembler>
   <avrasm.assembler.general.AdditionalIncludeDirectories>
     <ListValues>
-      <Value>%24(PackRepoDir)\atmel\ATmega_DFP\1.7.374\avrasm\inc</Value>
+      <Value>%24(PackRepoDir)\Atmel\ATmega_DFP\2.0.401\avrasm\inc</Value>
     </ListValues>
   </avrasm.assembler.general.AdditionalIncludeDirectories>
   <avrasm.assembler.general.OtherFlags>-DSIM_T25</avrasm.assembler.general.OtherFlags>

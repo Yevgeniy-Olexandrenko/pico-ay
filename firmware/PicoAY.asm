@@ -9,9 +9,10 @@
 ; GLOBAL DEFINES
 ; ==============================================================================
 
-   .equ     BAUD_RATE = 57600
-   .equ     SAMP_RATE = int(0.5 + (F_CPU / 1.0 / S_CYCLES))
-   .equ     U_STEP    = int(0.5 + (F_PSG / 8.0 / SAMP_RATE))
+   .equ     BAUD_RATE    = 57600
+   .equ     SAMP_RATE    = int(0.5 + (F_CPU / 1.0 / S_CYCLES))
+   .equ     U_STEP       = int(0.5 + (F_PSG / 8.0 / SAMP_RATE))
+   .equ     BIT_DURATION = (F_CPU / BAUD_RATE)
    .if      (U_STEP < 1 || U_STEP > 10)
    .error   "Update step is out of range"
    .endif
@@ -232,6 +233,16 @@ envelopes: __envelopes STEPS
 #endif
 .endmacro
 
+; DELAY FOR A NUMBER OF CPU CYCLES ---------------------------------------------
+.macro delay
+   .if      ((@1/3) > 0)
+    ldi     @0, (@1/3)              ; 1
+delay_loop:
+    dec     @0                      ; 1
+    brne    delay_loop              ; 1
+   .endif
+.endmacro
+
 ; ==============================================================================
 ; CODE BLOCKS
 ; ==============================================================================
@@ -269,20 +280,17 @@ __setup_data_access
 
 ; SETUP PORT PIN AS INPUT WITH PULL-UP -----------------------------------------
 .macro __setup_input_pullup
-    ; @0 DDRx
-    ; @1 PORTx
-    ; @2 PORTxn
-    ; @3 PUEx
-    ; @4 PUExn
-    cbi     @0, @2                  ;     Set port as input
-   .if      defined(@3)
-    sbi     @3, @4                  ;     Enable pull-up resistor using PUEx
+    ; @0 port name
+    ; @1 port bit number
+    cbi     DDR@0, PORT@0@1         ;     Set port as input
+   .if      defined(PUE@0)
+    sbi     PUE@0, PUE@0@1          ;     Enable pull-up resistor using PUEx
    .else
-    sbi     @1, @2                  ;     Enable pull-up resistor using PORTx
+    sbi     PORT@0, PORT@0@1        ;     Enable pull-up resistor using PORTx
    .endif
 .endmacro
-#define code_setup_input_pullup(P, B) \
-__setup_input_pullup DDR##P, PORT##P, PORT##P##B, PUE##P, PUE##P##B
+#define code_setup_input_pullup(__P, __B) \
+__setup_input_pullup __P, __B
 
 ; SETUP EVERYTHING ELSE AND START GENERATION -----------------------------------
 .macro __setup_and_start_generation
@@ -387,7 +395,7 @@ osc_to_high:
     lsr     YL                      ;
     brne    binary_search_loop      ;
 
-    ; Linear search for neighborhood values
+    ; Linear search for fine calibration
     ldi     BL, 0xFF                ;
     ldi     BH, 0xFF                ;
     dec     YH                      ; From: calibration-1
@@ -415,6 +423,8 @@ delta_is_larger:
     inc     YH                      ; 
     dec     YL                      ;
     brne    linaer_search_loop      ;
+
+    ; Apply final calibration and exit
     stio    OSCCAL, ZL              ;
     stio    @2, ZERO                ;
     stio    @0, ZERO                ;
@@ -454,9 +464,9 @@ reg_addr_exit:
 __handle_uart_data
 
 ; SOFTWARE UART DATA RECEIVE ---------------------------------------------------
-   .equ     BIT_DURATION = (F_CPU / BAUD_RATE)
-   .equ     ADC_DURATION = (F_CPU * 13 / 1000000)
-   .equ     BIT_EX_DELAY = ((BIT_DURATION - ADC_DURATION - 36) / 3)
+   .equ     ADC_DELAY_416 = (M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2) | M(ADPS0))
+   .equ     ADC_DELAY_208 = (M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2))
+   .equ     ADC_DELAY_104 = (M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS1) | M(ADPS0))
 
     ; TODO: write techical aspects of the implementation
 
@@ -470,57 +480,63 @@ __handle_uart_data
     ldi     AL, M(ADEN) | M(ADSC)   ;     Enable ADC, set min prescaler & start
     stio    ADCSRA, AL              ;     conversion to achieve stable 13 cycles
 .endmacro
-#define code_setup_sw_uart_int0(EIMR, EIER) \
-__setup_sw_uart_int0 EIMR, EIER
+#define code_setup_sw_uart_int0(__CR, __IR) \
+__setup_sw_uart_int0 __CR, __IR
 
 .macro __sw_uart_int0_sbit_isr
-   .if      (F_CPU != 16000000 && F_CPU != 8000000)
-   .error   "CPU clock must be 16 or 8 Mhz"
+   .if      (F_CPU != 16000000 && F_CPU != 12000000 && F_CPU != 8000000)
+   .error   "CPU clock must be 16, 12 or 8 Mhz"
    .endif
     CLR_PROBE(UART_START)
-   .if      (F_CPU == 16000000)     ;     Delay: 32*13=416=1.5*277.3 cycles
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2) | M(ADPS0)
-   .elif    (F_CPU == 8000000)      ;     Delay: 16*13=208=1.5*138.7 cycles
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
-   .endif
-    stio    ADCSRA, YH              ;     Set prescale and start conversion
+    push    YH                      ; 2   Save register used in ISR
+   .if      (F_CPU == 16000000)     ;     Start bit duration at 16 MHz:
+    delay   YH, (416-416)           ;     1.5 * 277 = 416 cycles
+    ldi     YH, ADC_DELAY_416       ;
+   .elif    (F_CPU == 12000000)     ;     Start bit duration at 12 MHz:
+    delay   YH, (312-208)           ;     1.5 * 208 = 312 cycles
+    ldi     YH, ADC_DELAY_208       ;
+   .elif    (F_CPU == 8000000)      ;     Start bit duration at 8 MHz:
+    delay   YH, (208-208)           ;     1.5 * 139 = 208 cycles
+    ldi     YH, ADC_DELAY_208       ;
+   .endif                           ;
+    stio    ADCSRA, YH              ;     Set ADC prescale and start conversion
     stio    @0, ZERO                ;     Disable INT0 ISR execution
     ldi     YH, 0x80                ;     Init UART data shift register
     sts     uart_data, YH           ;
+    pop     YH                      ;  2  Restore register used in ISR
     CLR_PROBE(UART_DELAY)
-    reti                            ;
+    reti                            ;     Return from ISR
 .endmacro
-#define proc_sw_uart_int0_sbit_isr(EIER) \
-sw_uart_int0_sbit_isr: __sw_uart_int0_sbit_isr EIER
+#define proc_sw_uart_int0_sbit_isr(__IR) \
+sw_uart_int0_sbit_isr: __sw_uart_int0_sbit_isr __IR
 
 .macro __sw_uart_int0_dbit_isr
     ; @0 mcu port for UART RX input
     ; @1 mcu port bit number of UART RX pin
-   .if      (F_CPU != 16000000 && F_CPU != 8000000)
-   .error   "CPU clock must be 16 or 8 Mhz"
+   .if      (F_CPU != 16000000 && F_CPU != 12000000 && F_CPU != 8000000)
+   .error   "CPU clock must be 16, 12 or 8 Mhz"
    .endif
     push    YH                      ; 2
     ldio    YH, SREG                ; 1~2
     push    YH                      ; 2
     lds     YH, uart_data           ; 1~2
     clc                             ; 1
-    sbic    @0, @1                  ; 1|2 Check UART RX pin
+    sbic    PIN@0, PORT@0@1         ; 1|2 Check UART RX pin
     sec                             ; 1
     ror     YH                      ; 1
     TGL_PROBE(UART_DELAY)
     brcs    handle_uart_data        ; 1|2
     sts     uart_data, YH           ; 1~2
-   .if      (BIT_EX_DELAY > 0)
-    ldi     YH, BIT_EX_DELAY        ; 1
-extra_delay_loop:
-    dec     YH                      ; 1
-    brne    extra_delay_loop        ; 1
-   .endif
-   .if      (F_CPU == 16000000)     ;     Delay: 16*13=208, extra: 277-208=69
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2)
-   .elif    (F_CPU == 8000000)      ;     Delay: 8*13=104,  extra: 138-104=34
-    ldi     YH, M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS1) | M(ADPS0)
-   .endif
+   .if      (F_CPU == 16000000)     ;     Data bit duration at 16 MHz:
+    delay   YH, (277-208-36)        ;     277 cycles
+    ldi     YH, ADC_DELAY_208       ;
+   .elif    (F_CPU == 12000000)     ;     Data bit duration at 12 MHz:
+    delay   YH, (208-208-36)        ;     208 cycles
+    ldi     YH, ADC_DELAY_208       ;
+   .elif    (F_CPU == 8000000)      ;     Data bit duration at 8 MHz:
+    delay   YH, (138-104-36)        ;     138 cycles
+    ldi     YH, ADC_DELAY_104       ;
+   .endif                           ;
     stio    ADCSRA, YH              ;     Set prescale and start conversion
     rjmp    exit_isr
 handle_uart_data:
@@ -541,8 +557,8 @@ exit_isr:
     pop     YH                      ;
     reti                            ;
 .endmacro
-#define proc_sw_uart_int0_dbit_isr(P, B, EIFR, EIER) \
-sw_uart_int0_dbit_isr: __sw_uart_int0_dbit_isr PIN##P, PORT##P##B, EIFR, EIER
+#define proc_sw_uart_int0_dbit_isr(__P, __B, __FR, __IR) \
+sw_uart_int0_dbit_isr: __sw_uart_int0_dbit_isr __P, __B, __FR, __IR
 
 ; HARDWARE UART DATA RECEIVE ---------------------------------------------------
 .macro __hw_uart_data_isr

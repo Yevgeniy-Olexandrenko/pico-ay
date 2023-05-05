@@ -41,144 +41,11 @@
     .equ    F_CPU     = 16000000
     .equ    F_PSG     = 1750000
     .equ    S_CYCLES  = 432
-    .equ    MAX_AMP   = 170
+    .equ    MAX_AMP   = (256*2/3)
     .equ    ENV_STEPS = 32
 #endif
 
     .include "../PicoAY.asm"
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-.macro __osccal_pcint_isr
-    ; AL changed, general usage
-    ; AH measurement counter
-    ; XL bit duration in cpu cycles (low byte)
-    ; XH bit duration in cpu cycles (high byte)
-    sbic    PIND, PORTD2            ; Check pin level (low/high)
-    rjmp    high_level_triggered    ; Skip if clear (low level)
-    stio    TCNT1H, ZERO            ; Reset timer counter
-    stio    TCNT1L, ZERO            ;
-    ldi     AL, M(CS10)             ; Start timer counting
-    stio    TCCR1B, AL              ;
-    rjmp    isr_exit                ; Exit ISR
-
-high_level_triggered:
-    stio    TCCR1B, ZERO            ; Stop timer counting
-    tst     AH                      ; Checks if measurement has been
-    breq    isr_exit                ; completed
-    push    BL                      ; Save BL/BH
-    push    BH                      ;
-    ldio    BL, TCNT1L              ; Get timer counter value 
-    ldio    BH, TCNT1H              ;
-    cp      XL, BL                  ; Compare with lowest measured value
-    cpc     XH, BH                  ;
-    brlo    high_level_exit         ; XL/XH < BL/BH
-    mov     XL, BL                  ; Update with new lowest measured value
-    mov     XH, BH                  ;
-
-high_level_exit:
-    TGL_PROBE(MS_LVL)
-    dec     AH                      ; Decrement measurement counter
-    pop     BH                      ; Restore BL/BH
-    pop     BL                      ;
-isr_exit:
-    reti                            ; Exit ISR
-.endmacro
-#define code_osccal_pcint_isr() \
-osccal_pcint_isr: __osccal_pcint_isr
-
-.macro __osccal_uart_bit_duration
-    ; AH measurement counter
-    ; XL bit duration in cpu cycles (low byte)
-    ; XH bit duration in cpu cycles (high byte)
-    ldi     XL, 0xFF                ; Set lowest value as top of
-    ldi     XH, 0xFF                ; 16-bit value
-    ldi     AH, 16                  ; Number of bit duration measurements
-wait_for_high_level:
-    sbis    PIND, PORTD2            ; Wait for pin level goes high then
-    rjmp    wait_for_high_level     ; start new measurement
-    sei                             ; Enable interrupts
-wait_for_measurement:
-    tst     AH                      ; Check if measurement has been
-    brne    wait_for_measurement    ; completed
-    cli                             ; Disable interrupts
-    ret                             ; Return
-.endmacro
-#define code_osccal_uart_bit_duration() \
-osccal_uart_bit_duration: __osccal_uart_bit_duration
-
-.macro __calibrate_internal_oscillator
-    CLR_PROBE(IN_OUT)
-    ldi     AL, M(PCINT18)          ; INT0/PCINT18 pin
-    stio    PCMSK2, AL              ; Enable pin change interrupt
-    ldi     AL, M(PCIE2)
-    stio    PCICR, AL
-
-    ldi     YL, 128                 ; step
-    ldi     YH, 0                   ; trialValue
-calibration_loop:
-    ; update calibration with new value
-    mov     AL, YH                  ; OSCCAL = trialValue + step
-    add     AL, YL                  ;
-    stio    OSCCAL, AL              ;
-    TGL_PROBE(WR_CAL)
-    ; update calibration
-    rcall   osccal_uart_bit_duration
-    subi    XL, low (BIT_DURATION)  ; Compare measured bit duration against
-    sbci    XH, high(BIT_DURATION)  ; the target one
-    brsh    osc_to_high             ; XL/XH >= BL/BH (measured >= target)
-    add     YH, YL                  ; trialValue = trialValue + step
-osc_to_high:
-    lsr     YL                      ; step = step >> 1
-    brne    calibration_loop        ;
-
-#if 1
-    ; neighborhood search
-    ldi     BL, 0xFF                ; optimumDev = 0xFFFF
-    ldi     BH, 0xFF                ;
-    ldi     YL, 3                   ; from trialValue - 1 to trialValue + 1
-    dec     YH                      ; trialValue - 1
-
-clibration_loop2:
-    stio    OSCCAL, YH              ;
-    ; update calibration
-    rcall   osccal_uart_bit_duration
-    subi    XL, low (BIT_DURATION)  ; x = measured - target
-    sbci    XH, high(BIT_DURATION)  ;
-    brsh    positive_delta          ;
-    clr     AL                      ; x = -x
-    clr     AH                      ;
-    sub     AL, XL                  ;
-    sbc     AH, XH                  ;
-    mov     XL, AL                  ;
-    mov     XH, AH                  ;
-positive_delta:
-    cp      XL, BL                  ; if(x < optimumDev)
-    cpc     XH, BH                  ;
-    brsh    delta_larger            ; x >= optimumDev
-    mov     BL, XL                  ; x <  optimumDev
-    mov     BH, XH                  ; optimumDev = x;
-    mov     ZL, YH                  ; optimumValue = OSCCAL;
-delta_larger:
-    inc     YH                      ; 
-    dec     YL                      ;
-    brne    clibration_loop2
-    ; update calibration with final value
-    stio    OSCCAL, ZL              ; OSCCAL = optimumValue
-#endif
-    ; exit
-    stio    PCICR, ZERO             ;
-    stio    PCMSK2, ZERO            ; Disable pin change interrupt
-    SET_PROBE(IN_OUT)
-.endmacro
-#define code_calibrate_internal_oscillator() \
-__calibrate_internal_oscillator
-
-
-
-
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; ==============================================================================
 ; FLASH
@@ -191,7 +58,7 @@ __calibrate_internal_oscillator
     rjmp    sw_uart_int0_sbit_isr
 #if INTERNAL_OSCILLATOR
     .org    PCI2addr
-    rjmp    osccal_pcint_isr
+    rjmp    osccal_t16_pcint_isr
 #endif
     .org    URXCaddr
     rjmp    hw_uart_data_isr
@@ -230,13 +97,13 @@ main:
 #if INTERNAL_OSCILLATOR
 #if INTOSC_CALIBR_PROBES
     ; Setup internal oscillator calibration debug probes
-    DEF_PROBE(IN_OUT, C, 0)
-    DEF_PROBE(MS_LVL, C, 1)
-    DEF_PROBE(WR_CAL, C, 2)
+    DEF_PROBE(CAL_START_STOP,   C, 0)
+    DEF_PROBE(CAL_MEASUREMENT,  C, 1)
+    DEF_PROBE(CAL_WRITE_OSCCAL, C, 2)
 #endif
     ; Calibrate system clock using UART signal
     code_setup_input_pullup(D, 2)
-    code_calibrate_internal_oscillator()
+    code_calibrate_internal_oscillator(PCMSK2, 18, PCICR, PCIE2)
 #endif
 
 #if SOFTWARE_UART_PROBES
@@ -300,8 +167,8 @@ main:
 
 #if INTERNAL_OSCILLATOR
     ; System clock calibration implementation
-    code_osccal_pcint_isr()
-    code_osccal_uart_bit_duration()
+    proc_osccal_t16_pcint_isr(D, 2, 1)
+    proc_osccal_uart_bit_duration(D, 2)
 #endif
 
     ; Software UART implementation

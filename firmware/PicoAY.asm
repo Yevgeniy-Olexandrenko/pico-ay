@@ -296,6 +296,133 @@ __setup_input_pullup DDR##P, PORT##P, PORT##P##B, PUE##P, PUE##P##B
 #define code_setup_and_start_generation() \
 __setup_and_start_generation
 
+; INTERNAL OSCILLATOR CALIBRATION USING UART SIGNAL ----------------------------
+.macro __osccal_t16_pcint_isr
+    ; @0 port name
+    ; @1 port bit number
+    ; @2 timer number
+    ; @3 CSn0 where n is a timer number
+    ; AL changed, general usage
+    ; AH measurement counter
+    ; XL bit duration in cpu cycles (low byte)
+    ; XH bit duration in cpu cycles (high byte)
+    sbic    PIN@0, PORT@0@1         ; Check pin level (low/high)
+    rjmp    high_level_triggered    ; Skip if clear (low level)
+    stio    TCNT@2H, ZERO           ; Reset timer counter
+    stio    TCNT@2L, ZERO           ;
+    ldi     AL, M(@3)               ; Start timer counting
+    stio    TCCR@2B, AL             ;
+    rjmp    isr_exit                ; Exit ISR
+high_level_triggered:
+    stio    TCCR@2B, ZERO           ; Stop timer counting
+    tst     AH                      ; Checks if measurement has been
+    breq    isr_exit                ; completed
+    push    BL                      ; Save BL/BH
+    push    BH                      ;
+    ldio    BL, TCNT@2L             ; Get timer counter value 
+    ldio    BH, TCNT@2H             ;
+    cp      XL, BL                  ; Compare with lowest measured value
+    cpc     XH, BH                  ;
+    brlo    high_level_exit         ; XL/XH < BL/BH
+    mov     XL, BL                  ; Update with new lowest measured value
+    mov     XH, BH                  ;
+high_level_exit:
+    TGL_PROBE(CAL_MEASUREMENT)
+    dec     AH                      ; Decrement measurement counter
+    pop     BH                      ; Restore BL/BH
+    pop     BL                      ;
+isr_exit:
+    reti                            ; Exit ISR
+.endmacro
+#define proc_osccal_t16_pcint_isr(__P, __B, __T) \
+osccal_t16_pcint_isr: __osccal_t16_pcint_isr __P, __B, __T, CS##__T##0
+
+.macro __osccal_uart_bit_duration
+    ; @0 port name
+    ; @1 port bit number
+    ; AH measurement counter
+    ; XL bit duration in cpu cycles (low byte)
+    ; XH bit duration in cpu cycles (high byte)
+    ldi     XL, 0xFF                ; Set lowest value as top of
+    ldi     XH, 0xFF                ; 16-bit value
+    ldi     AH, 16                  ; Number of bit duration measurements
+wait_for_high_level:
+    sbis    PIN@0, PORT@0@1         ; Wait for pin level goes high then
+    rjmp    wait_for_high_level     ; start new measurement
+    sei                             ; Enable interrupts
+wait_for_measurement:
+    tst     AH                      ; Check if measurement has been
+    brne    wait_for_measurement    ; completed
+    cli                             ; Disable interrupts
+    ret                             ; Return
+.endmacro
+#define proc_osccal_uart_bit_duration(__P, __B) \
+osccal_uart_bit_duration: __osccal_uart_bit_duration __P, __B
+
+.macro __calibrate_internal_oscillator
+    ; @0 pin change mask register
+    ; @1 pin change enable bit number for mask 
+    ; @2 pin change interrupt enable register
+    ; @3 pin change interrupt enable flag 
+    CLR_PROBE(CAL_START_STOP)
+    ldi     AL, M(PCINT@1)          ;
+    stio    @0, AL                  ;
+    ldi     AL, M(@3)               ;
+    stio    @2, AL                  ;
+
+    ; Binary search for coarse calibration
+    ldi     YL, 128                 ;
+    ldi     YH, 0                   ;
+binary_search_loop:
+    mov     AL, YH                  ;
+    add     AL, YL                  ;
+    stio    OSCCAL, AL              ;
+    TGL_PROBE(CAL_WRITE_OSCCAL)
+    rcall   osccal_uart_bit_duration
+    subi    XL, low (BIT_DURATION)  ;
+    sbci    XH, high(BIT_DURATION)  ;
+    brsh    osc_to_high             ;
+    add     YH, YL                  ;
+osc_to_high:
+    lsr     YL                      ;
+    brne    binary_search_loop      ;
+
+    ; Linear search for neighborhood values
+    ldi     BL, 0xFF                ;
+    ldi     BH, 0xFF                ;
+    dec     YH                      ; From: calibration-1
+    ldi     YL, 3                   ; To:   calibration+1
+linaer_search_loop:
+    stio    OSCCAL, YH              ;
+    rcall   osccal_uart_bit_duration
+    subi    XL, low (BIT_DURATION)  ;
+    sbci    XH, high(BIT_DURATION)  ;
+    brsh    delta_is_positive       ;
+    clr     AL                      ;
+    clr     AH                      ;
+    sub     AL, XL                  ;
+    sbc     AH, XH                  ;
+    mov     XL, AL                  ;
+    mov     XH, AH                  ;
+delta_is_positive:
+    cp      XL, BL                  ;
+    cpc     XH, BH                  ;
+    brsh    delta_is_larger         ;
+    mov     BL, XL                  ;
+    mov     BH, XH                  ;
+    mov     ZL, YH                  ;
+delta_is_larger:
+    inc     YH                      ; 
+    dec     YL                      ;
+    brne    linaer_search_loop      ;
+    stio    OSCCAL, ZL              ;
+    stio    @2, ZERO                ;
+    stio    @0, ZERO                ;
+    SET_PROBE(CAL_START_STOP)
+.endmacro
+#define code_calibrate_internal_oscillator(__MR, __MB, __IR, __IF) \
+__calibrate_internal_oscillator __MR, __MB, __IR, __IF
+
 ; HANDLE UART RECEIVED DATA ACCORDING TO PROTOCOL ------------------------------
 .macro __handle_uart_data
     ; YL must be saved outside this code

@@ -131,15 +131,15 @@ main:
     stio    UCSR0C, AL              ;
 
 #if defined(SIM_T10)
-    ; Setup Timer1 for Fast PWM 8-bit with ICR1 top
+    ; Setup Timer1 for Phase Correct PWM with ICR1 as TOP
     sbi     DDRB, PORTB1            ; Set PORTB1 and PORTB2 as output
-    sbi     DDRB, PORTB2            ; for Fast PWM (OC1A and OC1B)
+    sbi     DDRB, PORTB2            ; for PWM (OC1A and OC1B)
     ldi     AL, M(WGM11) | M(COM1A1) | M(COM1B1)
     stio    TCCR1A, AL              ; Clear OC1A/OC1B on compare match
     ldi     AL, M(WGM13) | M(CS10)
-    stio    TCCR1B, AL              ; Fast PWM with no prescaling with
-    ldi     AL, high(S_CYCLES/2-1)  ; timer top defined by ICR1
-    stio    ICR1H, AL               ; Set high byte of 16-bit value
+    stio    TCCR1B, AL              ; Mode 10 (Phase Correct PWM, no
+    ldi     AL, high(S_CYCLES/2-1)  ; prescaling, TOP defined by ICR1)
+    stio    ICR1H, AL               ; Set high byte of 16-bit TOP
     ldi     AL, low(S_CYCLES/2-1)   ; then continue with low byte
     stio    ICR1L, AL
 #elif defined(SIM_T25)

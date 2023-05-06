@@ -435,7 +435,6 @@ __setup_osccal __MR, __MB, __IR, __IF
 
 ; HANDLE UART RECEIVED DATA ACCORDING TO PROTOCOL ------------------------------
 .macro __handle_uart_data
-    ; YL must be saved outside this code
     ; YH received data byte
     sbrs    raddr, WF_REG           ;     Skip next instruction if waiting for 
     rjmp    reg_data_received       ;     incoming register address
@@ -444,7 +443,8 @@ __setup_osccal __MR, __MB, __IR, __IF
     mov     raddr, YH               ;     Received data is a register address,
     rjmp    reg_addr_exit           ;     so save it and exit
 reg_data_received:
-    push    ZL                      ;     We need one more register for indexing
+    push    YL                      ;     We need two more registers for
+    push    ZL                      ;     indexing during masking and storing
     ldi     ZL, low(P(reg_mask))    ;     Read register mask from FLASH for
     ldp     ZL, raddr               ;     current register address
     and     ZL, YH                  ;     Apply mask for received register data
@@ -452,7 +452,8 @@ reg_data_received:
     ldi     YH, high(psg_regs)
     add     YL, raddr
     st      Y, ZL
-    pop     ZL                      ;     Restore register from stack
+    pop     ZL                      ;     Restore registers from stack
+    pop     YL
     cpi     raddr, 0x0D             ;     Check if register address is an
     brne    reg_data_exit           ;     envelope shape register address
     sbr     flags, M(EG_RES)        ;     Set envelope generator reset flag
@@ -489,21 +490,25 @@ __setup_sw_uart __CR, __IR
    .endif
     CLR_PROBE(UART_START)
     push    YH                      ; 2   Save register used in ISR
+    ldio    YH, SREG                ; 1~2 Save status register
+    push    YH                      ; 2
    .if      (F_CPU == 16000000)     ;     Start bit duration at 16 MHz:
     delay   YH, (416-416)           ;     1.5 * 277 = 416 cycles
-    ldi     YH, ADC_DELAY_416       ;
+    ldi     YH, ADC_DELAY_416       ; 1
    .elif    (F_CPU == 12000000)     ;     Start bit duration at 12 MHz:
     delay   YH, (312-208)           ;     1.5 * 208 = 312 cycles
-    ldi     YH, ADC_DELAY_208       ;
+    ldi     YH, ADC_DELAY_208       ; 1
    .elif    (F_CPU == 8000000)      ;     Start bit duration at 8 MHz:
     delay   YH, (208-208)           ;     1.5 * 139 = 208 cycles
-    ldi     YH, ADC_DELAY_208       ;
+    ldi     YH, ADC_DELAY_208       ; 1
    .endif                           ;
-    stio    ADCSRA, YH              ;     Set ADC prescale and start conversion
+    stio    ADCSRA, YH              ; 1~2 Set ADC prescale and start conversion
     stio    @0, ZERO                ;     Disable INT0 ISR execution
     ldi     YH, 0x80                ;     Init UART data shift register
     sts     uart_data, YH           ;
-    pop     YH                      ;  2  Restore register used in ISR
+    pop     YH                      ;     Restore status register
+    stio    SREG, YH                ;
+    pop     YH                      ;     Restore register used in ISR  
     CLR_PROBE(UART_DELAY)
     reti                            ;     Return from ISR
 .endmacro
@@ -516,8 +521,8 @@ sw_uart_sbit_isr: __sw_uart_sbit_isr __IR
    .if      (F_CPU != 16000000 && F_CPU != 12000000 && F_CPU != 8000000)
    .error   "CPU clock must be 16, 12 or 8 Mhz"
    .endif
-    push    YH                      ; 2
-    ldio    YH, SREG                ; 1~2
+    push    YH                      ; 2   Save register used in ISR
+    ldio    YH, SREG                ; 1~2 Save status register
     push    YH                      ; 2
     lds     YH, uart_data           ; 1~2
     clc                             ; 1
@@ -529,21 +534,19 @@ sw_uart_sbit_isr: __sw_uart_sbit_isr __IR
     sts     uart_data, YH           ; 1~2
    .if      (F_CPU == 16000000)     ;     Data bit duration at 16 MHz:
     delay   YH, (277-208-36)        ;     277 cycles
-    ldi     YH, ADC_DELAY_208       ;
+    ldi     YH, ADC_DELAY_208       ; 1
    .elif    (F_CPU == 12000000)     ;     Data bit duration at 12 MHz:
     delay   YH, (208-208-36)        ;     208 cycles
-    ldi     YH, ADC_DELAY_208       ;
+    ldi     YH, ADC_DELAY_208       ; 1
    .elif    (F_CPU == 8000000)      ;     Data bit duration at 8 MHz:
     delay   YH, (138-104-36)        ;     138 cycles
-    ldi     YH, ADC_DELAY_104       ;
+    ldi     YH, ADC_DELAY_104       ; 1
    .endif                           ;
-    stio    ADCSRA, YH              ;     Set prescale and start conversion
+    stio    ADCSRA, YH              ; 1~2 Set prescale and start conversion
     rjmp    exit_isr
 handle_uart_data:
     CLR_PROBE(UART_STORE)
-    push    YL                      ;
     code_handle_uart_data()         ;
-    pop     YL                      ;
     SET_PROBE(UART_STORE)
     ldi     YH, M(INTF0)            ;     Clear any pending INT0 ISR
     stio    @2, YH                  ;
@@ -552,9 +555,9 @@ handle_uart_data:
     SET_PROBE(UART_DELAY)
     SET_PROBE(UART_START)
 exit_isr:
-    pop     YH                      ;
+    pop     YH                      ;     Restore status register
     stio    SREG, YH                ;
-    pop     YH                      ;
+    pop     YH                      ;     Restore register used in ISR
     reti                            ;
 .endmacro
 #define proc_sw_uart_dbit_isr(__P, __B, __FR, __IR) \
@@ -598,7 +601,6 @@ __setup_hw_uart_u __U, UCSZ##__U##0, UCSZ##__U##1
 
 .macro __hw_uart_data_isr
     ; @0 usart i/o data register
-    push    YL                      ;
     push    YH                      ;
     ldio    YH, SREG                ;
     push    YH                      ;
@@ -607,7 +609,6 @@ __setup_hw_uart_u __U, UCSZ##__U##0, UCSZ##__U##1
     pop     YH                      ;
     stio    SREG, YH                ;
     pop     YH                      ;
-    pop     YL                      ;
     reti                            ;
 .endmacro
 #define proc_hw_uart_data_isr() \

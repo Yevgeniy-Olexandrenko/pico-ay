@@ -103,7 +103,7 @@ main:
 #endif
     ; Calibrate system clock using UART signal
     code_setup_input_pullup(D, 2)
-    code_calibrate_internal_oscillator(PCMSK2, 18, PCICR, PCIE2)
+    code_setup_osccal(PCMSK2, 18, PCICR, PCIE2)
 #endif
 
 #if SOFTWARE_UART_PROBES
@@ -118,17 +118,7 @@ main:
     code_setup_sw_uart_int0(EICRA, EIMSK)
 
     ; Setup hardware UART RX
-    .equ    UBRR = (F_CPU / 8 / BAUD_RATE - 1)
-    ldi     AL, high(UBRR)          ;
-    stio    UBRR0H, AL              ;
-    ldi     AL, low(UBRR)           ;
-    stio    UBRR0L, AL              ;
-    ldi     AL, M(U2X0)             ;
-    stio    UCSR0A, AL              ;
-    ldi     AL, M(RXCIE0) | M(RXEN0)
-    stio    UCSR0B, AL              ;
-    ldi     AL, M(UCSZ01) | M(UCSZ00)
-    stio    UCSR0C, AL              ;
+    code_setup_hw_uart(0)
 
 #if defined(SIM_T10)
     ; Setup Timer1 for Phase Correct PWM with ICR1 as TOP
@@ -176,7 +166,7 @@ main:
     proc_sw_uart_int0_dbit_isr(D, 2, EIFR, EIMSK)
 
     ; Hardware UART implementation
-    proc_hw_uart_data_isr(UDR0)
+    proc_hw_uart_data_isr(0)
 
 loop:
     ; Waiting for timer overflow and performing output

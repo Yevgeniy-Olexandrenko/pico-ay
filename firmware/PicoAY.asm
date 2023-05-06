@@ -367,7 +367,7 @@ wait_for_measurement:
 #define proc_osccal_uart_bit_duration(__P, __B) \
 osccal_uart_bit_duration: __osccal_uart_bit_duration __P, __B
 
-.macro __calibrate_internal_oscillator
+.macro __setup_osccal
     ; @0 pin change mask register
     ; @1 pin change enable bit number for mask 
     ; @2 pin change interrupt enable register
@@ -430,8 +430,8 @@ delta_is_larger:
     stio    @0, ZERO                ;
     SET_PROBE(CAL_START_STOP)
 .endmacro
-#define code_calibrate_internal_oscillator(__MR, __MB, __IR, __IF) \
-__calibrate_internal_oscillator __MR, __MB, __IR, __IF
+#define code_setup_osccal(__MR, __MB, __IR, __IF) \
+__setup_osccal __MR, __MB, __IR, __IF
 
 ; HANDLE UART RECEIVED DATA ACCORDING TO PROTOCOL ------------------------------
 .macro __handle_uart_data
@@ -561,13 +561,32 @@ exit_isr:
 sw_uart_int0_dbit_isr: __sw_uart_int0_dbit_isr __P, __B, __FR, __IR
 
 ; HARDWARE UART DATA RECEIVE ---------------------------------------------------
+.macro __setup_hw_uart
+    ; @0 usart module number
+    ; @1 UCSZn0, where n is a usart module number
+    ; @2 UCSZn1, where n is a usart module number
+   .equ     UBRR = (F_CPU / 8 / BAUD_RATE - 1)
+    ldi     AL, high(UBRR)          ;
+    stio    UBRR@0H, AL             ;
+    ldi     AL, low(UBRR)           ;
+    stio    UBRR@0L, AL             ;
+    ldi     AL, M(U2X@0)            ;
+    stio    UCSR@0A, AL             ;
+    ldi     AL, M(RXCIE@0) | M(RXEN@0)
+    stio    UCSR@0B, AL             ;
+    ldi     AL, M(@2) | M(@1)       ;
+    stio    UCSR@0C, AL             ;
+.endmacro
+#define code_setup_hw_uart(__U) \
+__setup_hw_uart __U, UCSZ##__U##0, UCSZ##__U##1
+
 .macro __hw_uart_data_isr
-    ; @0 mcu register for UART RX input
+    ; @0 usart module number
     push    YL                      ;
     push    YH                      ;
     ldio    YH, SREG                ;
     push    YH                      ;
-    ldio    YH, @0                  ;
+    ldio    YH, UDR@0               ;
     code_handle_uart_data()         ;
     pop     YH                      ;
     stio    SREG, YH                ;
@@ -575,8 +594,8 @@ sw_uart_int0_dbit_isr: __sw_uart_int0_dbit_isr __P, __B, __FR, __IR
     pop     YL                      ;
     reti                            ;
 .endmacro
-#define proc_hw_uart_data_isr(__UDR) \
-hw_uart_data_isr: __hw_uart_data_isr __UDR
+#define proc_hw_uart_data_isr(__U) \
+hw_uart_data_isr: __hw_uart_data_isr __U
 
 ; SYNCHRONIZE IN TIME AND OUTPUT PREVIOUSLY COMPUTED RESULT --------------------
 .macro __sync_and_out

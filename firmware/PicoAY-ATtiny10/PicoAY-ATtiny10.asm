@@ -53,9 +53,9 @@ main:
     stio    CCP, AL                 ; Change Protection register and set clock
     stio    CLKPSR, ZERO            ; division factor to 1 for 8 MHz
 
-    ; Calibrate system clock and setup software UART RX
+    ; Setup CPU clock calibration and setup software UART RX
     code_setup_input_pullup(B, 2)
-    code_calibrate_internal_oscillator(PCMSK, 2, PCICR, PCIE0)
+    code_setup_osccal(PCMSK, 2, PCICR, PCIE0)
     code_setup_sw_uart_int0(EICRA, EIMSK)
 
     ; Setup Timer0 for Phase Correct PWM with ICR0 as TOP

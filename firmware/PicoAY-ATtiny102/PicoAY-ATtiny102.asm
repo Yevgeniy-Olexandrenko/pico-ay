@@ -12,23 +12,23 @@
 ; DEFINES
 ; ==============================================================================
 
-    .equ    F_CPU    = 8000000
-    .equ    F_PSG    = 1750000
-    .equ    S_CYCLES = 292;328 for 12MHz
-    .equ    MAX_AMP  = ((S_CYCLES/2)*2/3)
+   .equ     F_CPU    = 11059200
+   .equ     F_PSG    = 1750000
+   .equ     S_CYCLES = 302
+   .equ     MAX_AMP  = ((S_CYCLES/2)*2/3)
 
-    .include "../PicoAY.asm"
+   .include "../PicoAY.asm"
 
 ; ==============================================================================
 ; FLASH
 ; ==============================================================================
 
 .cseg
-    .org    0x0000
+   .org     0x0000
     rjmp    main
-    .org    PCINT1addr
+   .org     PCINT1addr
     rjmp    osccal_t16_pcint_isr
-    .org    USART_RXCaddr
+   .org     USART_RXCaddr
     rjmp    hw_uart_data_isr
 
 ; ==============================================================================
@@ -94,15 +94,15 @@ loop:
     code_compute_channels_amp()                     ; 28-22
     code_compute_output(A, 0)                       ; 8-7
 
-    ; max cycles: 6+73+12+167+6+4+28+8=304 (+03%)
-    ; min cycles: 6+37+3+63+6+4+22+7=148   (-50%)
-    ; avg cycles: (304+148)/2=226          (-23%)
-    ; ovf period: 226*1.3=294, chosen 292
+    ; max cycles: 6+73+12+167+6+4+28+8=304 (+01%)
+    ; min cycles: 6+37+3+63+6+4+22+7=148   (-51%)
+    ; avg cycles: (304+148)/2=226          (-25%)
+    ; ovf period: 226*1.3=294, chosen 302
 
 ; ==============================================================================
 ; SRAM
 ; ==============================================================================
 
 .dseg
-    .org    SRAM_START
+   .org     SRAM_START
     sram_psg_regs_and_state()

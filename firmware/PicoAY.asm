@@ -470,7 +470,7 @@ __handle_uart_data
 
     ; TODO: write techical aspects of the implementation
 
-.macro __setup_sw_uart_int0
+.macro __setup_sw_uart
     ; @0 External interrupt INT0 mode register
     ; @1 External interrupt INT0 enable register
     ldi     AL, M(ISC01)            ;     Falling edge of INT0 generates an
@@ -480,10 +480,10 @@ __handle_uart_data
     ldi     AL, M(ADEN) | M(ADSC)   ;     Enable ADC, set min prescaler & start
     stio    ADCSRA, AL              ;     conversion to achieve stable 13 cycles
 .endmacro
-#define code_setup_sw_uart_int0(__CR, __IR) \
-__setup_sw_uart_int0 __CR, __IR
+#define code_setup_sw_uart(__CR, __IR) \
+__setup_sw_uart __CR, __IR
 
-.macro __sw_uart_int0_sbit_isr
+.macro __sw_uart_sbit_isr
    .if      (F_CPU != 16000000 && F_CPU != 12000000 && F_CPU != 8000000)
    .error   "CPU clock must be 16, 12 or 8 Mhz"
    .endif
@@ -507,10 +507,10 @@ __setup_sw_uart_int0 __CR, __IR
     CLR_PROBE(UART_DELAY)
     reti                            ;     Return from ISR
 .endmacro
-#define proc_sw_uart_int0_sbit_isr(__IR) \
-sw_uart_int0_sbit_isr: __sw_uart_int0_sbit_isr __IR
+#define proc_sw_uart_sbit_isr(__IR) \
+sw_uart_sbit_isr: __sw_uart_sbit_isr __IR
 
-.macro __sw_uart_int0_dbit_isr
+.macro __sw_uart_dbit_isr
     ; @0 mcu port for UART RX input
     ; @1 mcu port bit number of UART RX pin
    .if      (F_CPU != 16000000 && F_CPU != 12000000 && F_CPU != 8000000)
@@ -557,36 +557,52 @@ exit_isr:
     pop     YH                      ;
     reti                            ;
 .endmacro
-#define proc_sw_uart_int0_dbit_isr(__P, __B, __FR, __IR) \
-sw_uart_int0_dbit_isr: __sw_uart_int0_dbit_isr __P, __B, __FR, __IR
+#define proc_sw_uart_dbit_isr(__P, __B, __FR, __IR) \
+sw_uart_dbit_isr: __sw_uart_dbit_isr __P, __B, __FR, __IR
 
 ; HARDWARE UART DATA RECEIVE ---------------------------------------------------
 .macro __setup_hw_uart
+   .equ     UBRR = (F_CPU / 8 / BAUD_RATE - 1)
+    ldi     AL, high(UBRR)          ;
+    stio    UBRRH, AL               ;
+    ldi     AL, low(UBRR)           ;
+    stio    UBRRL, AL               ;
+    ldi     AL, M(U2X)              ;
+    stio    UCSRA, AL               ;
+    ldi     AL, M(RXCIE) | M(RXEN)  ;
+    stio    UCSRB, AL               ;
+    ldi     AL, M(UCSZ1) | M(UCSZ0) ;
+    stio    UCSRC, AL               ;
+.endmacro
+#define code_setup_hw_uart() \
+__setup_hw_uart
+
+.macro __setup_hw_uart_u
     ; @0 usart module number
     ; @1 UCSZn0, where n is a usart module number
     ; @2 UCSZn1, where n is a usart module number
-   .equ     UBRR = (F_CPU / 8 / BAUD_RATE - 1)
-    ldi     AL, high(UBRR)          ;
-    stio    UBRR@0H, AL             ;
-    ldi     AL, low(UBRR)           ;
-    stio    UBRR@0L, AL             ;
-    ldi     AL, M(U2X@0)            ;
-    stio    UCSR@0A, AL             ;
-    ldi     AL, M(RXCIE@0) | M(RXEN@0)
-    stio    UCSR@0B, AL             ;
-    ldi     AL, M(@2) | M(@1)       ;
-    stio    UCSR@0C, AL             ;
+   .equ     UBRRL = UBRR@0L
+   .equ     UBRRH = UBRR@0H
+   .equ     UCSRA = UCSR@0A
+   .equ     UCSRB = UCSR@0B
+   .equ     UCSRC = UCSR@0C
+   .equ     U2X   = U2X@0
+   .equ     RXCIE = RXCIE@0
+   .equ     RXEN  = RXEN@0
+   .equ     UCSZ0 = @1
+   .equ     UCSZ1 = @2
+    code_setup_hw_uart()
 .endmacro
-#define code_setup_hw_uart(__U) \
-__setup_hw_uart __U, UCSZ##__U##0, UCSZ##__U##1
+#define code_setup_hw_uart_u(__U) \
+__setup_hw_uart_u __U, UCSZ##__U##0, UCSZ##__U##1
 
 .macro __hw_uart_data_isr
-    ; @0 usart module number
+    ; @0 usart i/o data register
     push    YL                      ;
     push    YH                      ;
     ldio    YH, SREG                ;
     push    YH                      ;
-    ldio    YH, UDR@0               ;
+    ldio    YH, @0                  ;
     code_handle_uart_data()         ;
     pop     YH                      ;
     stio    SREG, YH                ;
@@ -594,8 +610,10 @@ __setup_hw_uart __U, UCSZ##__U##0, UCSZ##__U##1
     pop     YL                      ;
     reti                            ;
 .endmacro
-#define proc_hw_uart_data_isr(__U) \
-hw_uart_data_isr: __hw_uart_data_isr __U
+#define proc_hw_uart_data_isr() \
+hw_uart_data_isr: __hw_uart_data_isr UDR
+#define proc_hw_uart_data_isr_u(__U) \
+hw_uart_data_isr: __hw_uart_data_isr UDR##__U
 
 ; SYNCHRONIZE IN TIME AND OUTPUT PREVIOUSLY COMPUTED RESULT --------------------
 .macro __sync_and_out

@@ -19,19 +19,6 @@
 
     .include "../PicoAY.asm"
 
-    ; Workaround for stupid USART definitions in tn102def.inc
-    .equ    UBRR9L = UBRRL
-    .equ    UBRR9H = UBRRH
-    .equ    UCSR9A = UCSRA
-    .equ    UCSR9B = UCSRB
-    .equ    UCSR9C = UCSRC
-    .equ    U2X9   = U2X
-    .equ    RXCIE9 = RXCIE
-    .equ    RXEN9  = RXEN
-    .equ    UCSZ90 = UCSZ0
-    .equ    UCSZ91 = UCSZ1
-    .equ    UDR9   = UDR
-
 ; ==============================================================================
 ; FLASH
 ; ==============================================================================
@@ -68,7 +55,7 @@ main:
     ; Setup CPU clock calibration and setup hardware UART RX
     code_setup_input_pullup(B, 3)
     code_setup_osccal(PCMSK1, 11, PCICR, PCIE1)
-    code_setup_hw_uart(9)
+    code_setup_hw_uart()
 
     ; Setup Timer0 for Phase Correct PWM with ICR0 as TOP
     sbi     DDRB, PORTB1            ; Set PORTB1 and PORTA1 as output
@@ -90,7 +77,7 @@ main:
     proc_osccal_uart_bit_duration(B, 3)
 
     ; Hardware UART implementation
-    proc_hw_uart_data_isr(9)
+    proc_hw_uart_data_isr()
 
 loop:
     ; Waiting for timer overflow and performing output

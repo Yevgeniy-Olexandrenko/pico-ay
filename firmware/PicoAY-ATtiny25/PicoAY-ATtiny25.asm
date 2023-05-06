@@ -27,9 +27,9 @@
     .org    0x0000
     rjmp    main
     .org    INT0addr
-    rjmp    sw_uart_int0_sbit_isr
+    rjmp    sw_uart_sbit_isr
     .org    ADCCaddr
-    rjmp    sw_uart_int0_dbit_isr
+    rjmp    sw_uart_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -58,7 +58,7 @@ main:
 
     ; Setup software UART RX
     code_setup_input_pullup(B, 2)
-    code_setup_sw_uart_int0(MCUCR, GIMSK)
+    code_setup_sw_uart(MCUCR, GIMSK)
 
     ; Setup Time1 for High Speed PWM 8-bit with 0xFF top
     sbi     DDRB, PORTB1            ; Set PORTB1 and PORTB4 as output
@@ -78,8 +78,8 @@ main:
     code_setup_and_start_generation()
 
     ; Software UART implementation
-    proc_sw_uart_int0_sbit_isr(GIMSK)
-    proc_sw_uart_int0_dbit_isr(B, 2, GIFR, GIMSK)
+    proc_sw_uart_sbit_isr(GIMSK)
+    proc_sw_uart_dbit_isr(B, 2, GIFR, GIMSK)
 
 loop:
     ; Waiting for timer overflow and performing output

@@ -26,11 +26,11 @@
     .org    0x0000
     rjmp    main
     .org    INT0addr
-    rjmp    sw_uart_int0_sbit_isr
+    rjmp    sw_uart_sbit_isr
     .org    PCI0addr
     rjmp    osccal_t16_pcint_isr
     .org    ADCCaddr
-    rjmp    sw_uart_int0_dbit_isr
+    rjmp    sw_uart_dbit_isr
 
 ; ==============================================================================
 ; DATA
@@ -56,7 +56,7 @@ main:
     ; Setup CPU clock calibration and setup software UART RX
     code_setup_input_pullup(B, 2)
     code_setup_osccal(PCMSK, 2, PCICR, PCIE0)
-    code_setup_sw_uart_int0(EICRA, EIMSK)
+    code_setup_sw_uart(EICRA, EIMSK)
 
     ; Setup Timer0 for Phase Correct PWM with ICR0 as TOP
     sbi     DDRB, PORTB0            ; Set PORTB0 and PORTB1 as output
@@ -78,8 +78,8 @@ main:
     proc_osccal_uart_bit_duration(B, 2)
 
     ; Software UART implementation
-    proc_sw_uart_int0_sbit_isr(EIMSK)
-    proc_sw_uart_int0_dbit_isr(B, 2, EIFR, EIMSK)
+    proc_sw_uart_sbit_isr(EIMSK)
+    proc_sw_uart_dbit_isr(B, 2, EIFR, EIMSK)
 
 loop:
     ; Waiting for timer overflow and performing output

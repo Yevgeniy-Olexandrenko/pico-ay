@@ -108,9 +108,7 @@ main:
 
 #if SOFTWARE_UART_PROBES
     ; Setup software UART debug probes
-    DEF_PROBE(UART_START, C, 0)
-    DEF_PROBE(UART_RDBIT, C, 1)
-    DEF_PROBE(UART_STORE, C, 2)
+    DEF_PROBE(SW_UART, C, 0)
 #endif
 
     ; Setup software UART RX

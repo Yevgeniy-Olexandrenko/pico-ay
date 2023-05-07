@@ -488,7 +488,7 @@ __setup_sw_uart __CR, __IR
    .if      (F_CPU != 16000000 && F_CPU != 12000000 && F_CPU != 8000000)
    .error   "CPU clock must be 16, 12 or 8 Mhz"
    .endif
-    CLR_PROBE(UART_START)
+    CLR_PROBE(SW_UART)
     push    YH                      ; 2   Save register used in ISR
     ldio    YH, SREG                ; 1~2 Save status register
     push    YH                      ; 2
@@ -509,7 +509,6 @@ __setup_sw_uart __CR, __IR
     pop     YH                      ;     Restore status register
     stio    SREG, YH                ;
     pop     YH                      ;     Restore register used in ISR  
-    CLR_PROBE(UART_RDBIT)
     reti                            ;     Return from ISR
 .endmacro
 #define proc_sw_uart_sbit_isr(__IR) \
@@ -526,7 +525,7 @@ sw_uart_sbit_isr: __sw_uart_sbit_isr __IR
     push    YH                      ; 2
     lds     YH, uart_data           ; 1~2
     clc                             ; 1
-    TGL_PROBE(UART_RDBIT)
+    TGL_PROBE(SW_UART)
     sbic    PIN@0, PORT@0@1         ; 1|2 Check UART RX pin
     sec                             ; 1
     ror     YH                      ; 1
@@ -545,15 +544,12 @@ sw_uart_sbit_isr: __sw_uart_sbit_isr __IR
     stio    ADCSRA, YH              ; 1~2 Set prescale and start conversion
     rjmp    exit_isr
 handle_uart_data:
-    CLR_PROBE(UART_STORE)
     code_handle_uart_data()         ;
-    SET_PROBE(UART_STORE)
     ldi     YH, M(INTF0)            ;     Clear any pending INT0 ISR
     stio    @2, YH                  ;
     ldi     YH, M(INT0)             ;     Allow INT0 ISR execution
     stio    @3, YH                  ;
-    SET_PROBE(UART_RDBIT)
-    SET_PROBE(UART_START)
+    SET_PROBE(SW_UART)
 exit_isr:
     pop     YH                      ;     Restore status register
     stio    SREG, YH                ;

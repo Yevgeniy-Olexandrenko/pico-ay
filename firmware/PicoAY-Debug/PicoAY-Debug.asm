@@ -28,13 +28,13 @@
 ; ==============================================================================
 
 #define INTERNAL_OSCILLATOR     1
-#define SOFTWARE_UART_PROBES    0
-#define INTOSC_CALIBR_PROBES    1
+#define SOFTWARE_UART_PROBES    1
+#define INTOSC_CALIBR_PROBES    0
 
 #if defined(SIM_T10)
-    .equ    F_CPU     = 8000000
+    .equ    F_CPU     = 8000000;12000000;
     .equ    F_PSG     = 1750000
-    .equ    S_CYCLES  = 362;292
+    .equ    S_CYCLES  = 362;438;
     .equ    MAX_AMP   = ((S_CYCLES/2)*2/3)
     .equ    ENV_STEPS = 16
 #elif defined(SIM_T25)
@@ -109,7 +109,7 @@ main:
 #if SOFTWARE_UART_PROBES
     ; Setup software UART debug probes
     DEF_PROBE(UART_START, C, 0)
-    DEF_PROBE(UART_DELAY, C, 1)
+    DEF_PROBE(UART_RDBIT, C, 1)
     DEF_PROBE(UART_STORE, C, 2)
 #endif
 

@@ -496,7 +496,7 @@ __setup_sw_uart __CR, __IR
     delay   YH, (416-416)           ;     1.5 * 277 = 416 cycles
     ldi     YH, ADC_DELAY_416       ; 1
    .elif    (F_CPU == 12000000)     ;     Start bit duration at 12 MHz:
-    delay   YH, (312-208)           ;     1.5 * 208 = 312 cycles
+    delay   YH, (312-208-50)        ;     1.5 * 208 = 312 cycles
     ldi     YH, ADC_DELAY_208       ; 1
    .elif    (F_CPU == 8000000)      ;     Start bit duration at 8 MHz:
     delay   YH, (208-208)           ;     1.5 * 139 = 208 cycles
@@ -509,7 +509,7 @@ __setup_sw_uart __CR, __IR
     pop     YH                      ;     Restore status register
     stio    SREG, YH                ;
     pop     YH                      ;     Restore register used in ISR  
-    CLR_PROBE(UART_DELAY)
+    CLR_PROBE(UART_RDBIT)
     reti                            ;     Return from ISR
 .endmacro
 #define proc_sw_uart_sbit_isr(__IR) \
@@ -526,20 +526,20 @@ sw_uart_sbit_isr: __sw_uart_sbit_isr __IR
     push    YH                      ; 2
     lds     YH, uart_data           ; 1~2
     clc                             ; 1
+    TGL_PROBE(UART_RDBIT)
     sbic    PIN@0, PORT@0@1         ; 1|2 Check UART RX pin
     sec                             ; 1
     ror     YH                      ; 1
-    TGL_PROBE(UART_DELAY)
     brcs    handle_uart_data        ; 1|2
     sts     uart_data, YH           ; 1~2
    .if      (F_CPU == 16000000)     ;     Data bit duration at 16 MHz:
-    delay   YH, (277-208-36)        ;     277 cycles
+    delay   YH, (277-208-45)        ;     277 cycles
     ldi     YH, ADC_DELAY_208       ; 1
    .elif    (F_CPU == 12000000)     ;     Data bit duration at 12 MHz:
-    delay   YH, (208-208-36)        ;     208 cycles
-    ldi     YH, ADC_DELAY_208       ; 1
+    delay   YH, (208-104-26)        ;     208 cycles
+    ldi     YH, ADC_DELAY_104       ; 1
    .elif    (F_CPU == 8000000)      ;     Data bit duration at 8 MHz:
-    delay   YH, (138-104-36)        ;     138 cycles
+    delay   YH, (138-104-34)        ;     138 cycles
     ldi     YH, ADC_DELAY_104       ; 1
    .endif                           ;
     stio    ADCSRA, YH              ; 1~2 Set prescale and start conversion
@@ -552,7 +552,7 @@ handle_uart_data:
     stio    @2, YH                  ;
     ldi     YH, M(INT0)             ;     Allow INT0 ISR execution
     stio    @3, YH                  ;
-    SET_PROBE(UART_DELAY)
+    SET_PROBE(UART_RDBIT)
     SET_PROBE(UART_START)
 exit_isr:
     pop     YH                      ;     Restore status register

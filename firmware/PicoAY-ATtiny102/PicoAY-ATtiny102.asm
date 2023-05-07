@@ -70,6 +70,8 @@ main:
     stio    ICR0L, AL
 
     ; Setup everything else and start generation
+    code_setup_input_pullup(B, 2)   ; Setup chip select pin
+    code_setup_input_pullup(A, 0)   ; Setup stereo mode pin
     code_setup_and_start_generation()
 
     ; System clock calibration implementation

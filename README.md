@@ -11,7 +11,7 @@
 - Watchdog timer (WDT) supporting interrupt service routine (ISR)
 
 ### Firmware options
-||Units|FW-T10|FW-T102|FW-T25|
+||Units|FW-T10-X|FW-T102|FW-T25|
 |-|:-:|:-:|:-:|:-:|
 |MCU model|-|ATtiny10|ATtiny102|ATtiny25
 |MCU system clock|Mhz|12|11.059|16|
@@ -36,10 +36,10 @@
 ### Hardware options
 |Model|MCU|Firmware|Channels|Vcc|Stereo|RC (R)|RC (C)|Vp-p|
 |-|-|-|-|-|-|-|-|-|
-|HW-T10-X1-3.3|1 x ATtiny10|FW-T10|3|3.3V|ABC|?|?|?|
-|HW-T10-X1-5.0|1 x ATtiny10|FW-T10|3|5.0V|ABC|?|?|?|
-|HW-T10-X2-3.3|2 x ATtiny10|FW-T10|6|3.3V|ABC|?|?|?|
-|HW-T10-X2-5.0|2 x ATtiny10|FW-T10|6|5.0V|ABC|?|?|?|
+|HW-T10-X1-3.3|1 x ATtiny10|FW-T10-0|3|3.3V|ABC|?|?|?|
+|HW-T10-X1-5.0|1 x ATtiny10|FW-T10-0|3|5.0V|ABC|?|?|?|
+|HW-T10-X2-3.3|2 x ATtiny10|FW-T10-0, FW-T10-1|6|3.3V|ABC|?|?|?|
+|HW-T10-X2-5.0|2 x ATtiny10|FW-T10-0, FW-T10-1|6|5.0V|ABC|?|?|?|
 |HW-T102-X1-3.3|1 x ATtiny102|FW-T102|3|3.3V|ABC/ACB|?|?|?|
 |HW-T102-X1-5.0|1 x ATtiny102|FW-T102|3|5.0V|ABC/ACB|?|?|?|
 |HW-T102-X2-3.3|2 x ATtiny102|FW-T102|6|3.3V|ABC/ACB|?|?|?|

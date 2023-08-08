@@ -18,10 +18,10 @@
 |MCU cycles per PSG sample|cycle|328|302|432|
 |PSG virtual clock|Mhz|1.756|1.758|1.778|
 |PSG envelope steps|-|16|16|32|
+|PSG sample generator|-|Timer0 (16)|Timer0 (16)|Timer0 (8)|
 |PSG sample rate|Hz|36585|36620|37037|
-|PSG sample timer|-|Timer0 (16)|Timer0 (16)|Timer0 (8)|
-|PWM sample rate|kHz|36.6|36.6|250|
-|PWM sample timer|-|Timer0 (16)|Timer0 (16)|Timer1 (8)|
+|PWM sample generator|-|Timer0 (16)|Timer0 (16)|Timer1 (8)|
+|PWM sample rate|Hz|36585|36620|250000|
 |PWM resolution|levels|164|151|256|
 |UART speed|baud|57600|57600|57600|
 |UART implementation|-|Software|Hardware|Software|

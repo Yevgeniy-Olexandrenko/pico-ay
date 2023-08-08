@@ -29,7 +29,7 @@
     <eraseonlaunchrule>0</eraseonlaunchrule>
     <EraseKey />
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release-C0' ">
     <ToolchainSettings>
       <AvrAssembler>
         <avrasm.assembler.general.AdditionalIncludeDirectories>
@@ -37,10 +37,30 @@
             <Value>%24(PackRepoDir)\atmel\ATtiny_DFP\1.10.348\avrasm\inc</Value>
           </ListValues>
         </avrasm.assembler.general.AdditionalIncludeDirectories>
+        <avrasm.assembler.general.OtherFlags>-DCHIP_0</avrasm.assembler.general.OtherFlags>
         <avrasm.assembler.general.IncludeFile>tn10def.inc</avrasm.assembler.general.IncludeFile>
       </AvrAssembler>
     </ToolchainSettings>
     <OutputType>Executable</OutputType>
+    <OutputFileName>FW-T10-C0</OutputFileName>
+    <OutputFileExtension>.obj</OutputFileExtension>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release-C1' ">
+    <ToolchainSettings>
+      <AvrAssembler>
+        <avrasm.assembler.general.AdditionalIncludeDirectories>
+          <ListValues>
+            <Value>%24(PackRepoDir)\atmel\ATtiny_DFP\1.10.348\avrasm\inc</Value>
+          </ListValues>
+        </avrasm.assembler.general.AdditionalIncludeDirectories>
+        <avrasm.assembler.general.OtherFlags>-DCHIP_1</avrasm.assembler.general.OtherFlags>
+        <avrasm.assembler.general.IncludeFile>tn10def.inc</avrasm.assembler.general.IncludeFile>
+      </AvrAssembler>
+    </ToolchainSettings>
+    <OutputType>Executable</OutputType>
+    <OutputFileName>FW-T10-C1</OutputFileName>
+    <OutputFileExtension>.obj</OutputFileExtension>
+    <OutputPath>bin\Release-Chip-1\</OutputPath>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="PicoAY-ATtiny10.asm">

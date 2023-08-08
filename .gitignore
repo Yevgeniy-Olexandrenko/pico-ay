@@ -1,8 +1,8 @@
 firmware/.vs
 firmware/*/Debug/*
-firmware/*/Release/*
+firmware/*/Release*/*
 !firmware/*/Debug/*.hex
-!firmware/*/Release/*.hex
+!firmware/*/Release*/*.hex
 
 
 software/prototype/prj/.vs

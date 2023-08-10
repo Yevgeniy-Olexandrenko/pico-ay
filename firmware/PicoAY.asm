@@ -49,7 +49,8 @@
    .equ     NFFMSK  = 0b00_111_000  ; Noise flip-flop mask
    .equ     NS_B16  = bit7          ; Noise shifter bit16
    .equ     EG_RES  = bit6          ; Envelope generator reset
-   .equ     WF_REG  = bit4          ; Waiting for register address
+   .equ     LOCKED  = 0xFE          ; Chip access locked
+   .equ     ACCESS  = 0xFF          ; Chip access unlocked
 
     #define M(bit)  (1 << bit)      ; Get mask from bit number
     #define L(addr) (addr + 0)      ; Gel low byte address
@@ -295,7 +296,7 @@ __setup_input_pullup __P, __B
 ; SETUP EVERYTHING ELSE AND START GENERATION -----------------------------------
 .macro __setup_and_start_generation
     ldi     flags, M(NS_B16) | M(EG_RES)
-    ldi     raddr, M(WF_REG)        ;     Wait the register address to write
+    ldi     raddr, LOCKED           ;     Wait for proper chip selection
     mov     XL, ZERO                ;     Load zero to left output sample
     mov     XH, ZERO                ;     Load zero to right output sample
     sei                             ;     Enable interrupts
@@ -436,13 +437,21 @@ __setup_osccal __MR, __MB, __IR, __IF
 ; HANDLE UART RECEIVED DATA ACCORDING TO PROTOCOL ------------------------------
 .macro __handle_uart_data
     ; YH received data byte
-    sbrs    raddr, WF_REG           ;     Skip next instruction if waiting for 
-    rjmp    reg_data_received       ;     incoming register address
-    cpi     YH, 0x10-2              ;     Check if received byte is a valid
-    brsh    reg_addr_exit           ;     register addres, otherwise try to sync
-    mov     raddr, YH               ;     Received data is a register address,
-    rjmp    reg_addr_exit           ;     so save it and exit
-reg_data_received:
+    cpi     raddr, 0x0E             ;     If reg number is received earlier,
+    brlo    reg_data_received       ;     treat received data as a reg value
+    cpi     YH, 0x0E                ;     0x00-0x0D treated as reg number, so
+    brlo    reg_addr_received       ;     try to save it for the future use
+    cpi     YH, 0xFE                ;     0xFF,0xFE treated as select chip #0/#1
+    brlo    reg_addr_exit           ;     otherwise skip received data
+    ldi     raddr, 0x01             ;     If chip #1 is selected now, we need to
+    sbis    PIN@0, PORT@0@1         ;     invert LSB of the data to get locked
+    eor     YH, raddr               ;     (0xFE) or unlocked (0xFF) access state
+    mov     raddr, YH               ;     Following OPs do not change state
+reg_addr_received:
+    sbrc    raddr, 0                ;     Skip next OP if chip access in locked
+    mov     raddr, YH               ;     Save received data as register number
+    rjmp    reg_addr_exit
+reg_deta_received:
     push    YL                      ;     We need two more registers for
     push    ZL                      ;     indexing during masking and storing
     ldi     ZL, low(P(reg_mask))    ;     Read register mask from FLASH for
@@ -458,11 +467,11 @@ reg_data_received:
     brne    reg_data_exit           ;     envelope shape register address
     sbr     flags, M(EG_RES)        ;     Set envelope generator reset flag
 reg_data_exit:
-    sbr     raddr, M(WF_REG)        ;     Wait for next byte as register address
+    ldi     raddr, ACCESS           ;     Unlock and wait for new reg number
 reg_addr_exit:
 .endmacro
-#define code_handle_uart_data() \
-__handle_uart_data
+#define code_handle_uart_data(__P, __B) \
+__handle_uart_data __P, __B
 
 ; SOFTWARE UART DATA RECEIVE ---------------------------------------------------
    .equ     ADC_DELAY_416 = (M(ADEN) | M(ADSC) | M(ADIE) | M(ADPS2) | M(ADPS0))

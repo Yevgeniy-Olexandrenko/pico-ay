@@ -79,7 +79,7 @@ main:
 
     ; Software UART implementation
     proc_sw_uart_sbit_isr(GIMSK)
-    proc_sw_uart_dbit_isr(B, 2, GIFR, GIMSK)
+    proc_sw_uart_dbit_isr(B, 2, GIFR, GIMSK, B, 0)
 
 loop:
     ; Waiting for timer overflow and performing output

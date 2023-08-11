@@ -79,7 +79,7 @@ main:
     proc_osccal_uart_bit_duration(B, 3)
 
     ; Hardware UART implementation
-    proc_hw_uart_data_isr()
+    proc_hw_uart_data_isr(B, 2)
 
 loop:
     ; Waiting for timer overflow and performing output

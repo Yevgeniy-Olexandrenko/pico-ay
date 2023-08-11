@@ -71,6 +71,7 @@ main:
     stio    ICR0L, AL
 
     ; Setup everything else and start generation
+    code_setup_input_pullup(B, 3)   ; Setup chip select pin
     code_setup_and_start_generation()
 
     ; System clock calibration implementation
@@ -79,7 +80,7 @@ main:
 
     ; Software UART implementation
     proc_sw_uart_sbit_isr(EIMSK)
-    proc_sw_uart_dbit_isr(B, 2, EIFR, EIMSK)
+    proc_sw_uart_dbit_isr(B, 2, EIFR, EIMSK, B, 3)
 
 loop:
     ; Waiting for timer overflow and performing output

@@ -1,8 +1,8 @@
 ; Features to implement:
-; - Internal clock calibration using UART signal as source of sync
+; ~ Internal clock calibration using UART signal as source of sync
 ; - Auto mute chip using WDT when there is no UART communication
 ; - Disable all unused hardware to reduce power consumption
-; - PSG chip selection using dedicated pin (high - Chip #0, low - Chip #1)
+; ~ PSG chip selection using dedicated pin (high - Chip #0, low - Chip #1)
 ; + PSG stereo mode selection using dedicated pin (high - ABC, low - ACB)
 
 ; ==============================================================================
@@ -238,9 +238,9 @@ envelopes: __envelopes STEPS
 .macro delay
    .if      ((@1/3) > 0)
     ldi     @0, (@1/3)              ; 1
-delay_loop:
+lopp:
     dec     @0                      ; 1
-    brne    delay_loop              ; 1
+    brne    loop                    ; 1
    .endif
 .endmacro
 
@@ -254,10 +254,10 @@ delay_loop:
     ldi     ZL, low(psg_regs)       ;     Setup start address in SRAM
     ldi     ZH, high(psg_regs)      ;
     ldi     AL, psg_end-psg_regs    ;     SRAM size to be cleared
-sram_clear_loop:                    ;
+loop:
     st      Z+, ZERO                ;
     dec     AL                      ;
-    brne    sram_clear_loop         ;
+    brne    loop                    ;
     ldi     AL, low(RAMEND)         ;
     stio    SPL, AL                 ;
    .if      defined(SPH)
@@ -437,6 +437,8 @@ __setup_osccal __MR, __MB, __IR, __IF
 ; HANDLE UART RECEIVED DATA ACCORDING TO PROTOCOL ------------------------------
 .macro __handle_uart_data
     ; YH received data byte
+    ; @0 mcu port for chip selection pin
+    ; @0 mcu port bit number for chip selection pin
     cpi     raddr, 0x0E             ;     If reg number is received earlier,
     brlo    reg_data_received       ;     treat received data as a reg value
     cpi     YH, 0x0E                ;     0x00-0x0D treated as reg number, so
@@ -451,7 +453,7 @@ reg_addr_received:
     sbrc    raddr, 0                ;     Skip next OP if chip access in locked
     mov     raddr, YH               ;     Save received data as register number
     rjmp    reg_addr_exit
-reg_deta_received:
+reg_data_received:
     push    YL                      ;     We need two more registers for
     push    ZL                      ;     indexing during masking and storing
     ldi     ZL, low(P(reg_mask))    ;     Read register mask from FLASH for
@@ -494,6 +496,7 @@ __handle_uart_data __P, __B
 __setup_sw_uart __CR, __IR
 
 .macro __sw_uart_sbit_isr
+    ; @1 External interrupt INT0 enable register
    .if      (F_CPU != 16000000 && F_CPU != 12000000 && F_CPU != 8000000)
    .error   "CPU clock must be 16, 12 or 8 Mhz"
    .endif
@@ -526,6 +529,10 @@ sw_uart_sbit_isr: __sw_uart_sbit_isr __IR
 .macro __sw_uart_dbit_isr
     ; @0 mcu port for UART RX input
     ; @1 mcu port bit number of UART RX pin
+    ; @2 External interrupt INT0 flag register
+    ; @3 External interrupt INT0 enable register
+    ; @4 mcu port for chip selection pin
+    ; @5 mcu port bit number for chip selection pin
    .if      (F_CPU != 16000000 && F_CPU != 12000000 && F_CPU != 8000000)
    .error   "CPU clock must be 16, 12 or 8 Mhz"
    .endif
@@ -553,7 +560,7 @@ sw_uart_sbit_isr: __sw_uart_sbit_isr __IR
     stio    ADCSRA, YH              ; 1~2 Set prescale and start conversion
     rjmp    exit_isr
 handle_uart_data:
-    code_handle_uart_data()         ;
+    code_handle_uart_data(@4, @5)   ;
     ldi     YH, M(INTF0)            ;     Clear any pending INT0 ISR
     stio    @2, YH                  ;
     ldi     YH, M(INT0)             ;     Allow INT0 ISR execution
@@ -565,8 +572,8 @@ exit_isr:
     pop     YH                      ;     Restore register used in ISR
     reti                            ;
 .endmacro
-#define proc_sw_uart_dbit_isr(__P, __B, __FR, __IR) \
-sw_uart_dbit_isr: __sw_uart_dbit_isr __P, __B, __FR, __IR
+#define proc_sw_uart_dbit_isr(__P, __B, __FR, __IR, __CSP, __CSB) \
+sw_uart_dbit_isr: __sw_uart_dbit_isr __P, __B, __FR, __IR, __CSP, __CSB
 
 ; HARDWARE UART DATA RECEIVE ---------------------------------------------------
 .macro __setup_hw_uart
@@ -606,20 +613,22 @@ __setup_hw_uart_u __U, UCSZ##__U##0, UCSZ##__U##1
 
 .macro __hw_uart_data_isr
     ; @0 usart i/o data register
+    ; @1 mcu port for chip selection pin
+    ; @2 mcu port bit number for chip selection pin
     push    YH                      ;
     ldio    YH, SREG                ;
     push    YH                      ;
     ldio    YH, @0                  ;
-    code_handle_uart_data()         ;
+    code_handle_uart_data(@1, @2)   ;
     pop     YH                      ;
     stio    SREG, YH                ;
     pop     YH                      ;
     reti                            ;
 .endmacro
-#define proc_hw_uart_data_isr() \
-hw_uart_data_isr: __hw_uart_data_isr UDR
-#define proc_hw_uart_data_isr_u(__U) \
-hw_uart_data_isr: __hw_uart_data_isr UDR##__U
+#define proc_hw_uart_data_isr(__CSP, __CSB) \
+hw_uart_data_isr: __hw_uart_data_isr UDR, __CSP, __CSB
+#define proc_hw_uart_data_isr_u(__U, __CSP, __CSB) \
+hw_uart_data_isr: __hw_uart_data_isr UDR##__U, __CSP, __CSB
 
 ; SYNCHRONIZE IN TIME AND OUTPUT PREVIOUSLY COMPUTED RESULT --------------------
 .macro __sync_and_out
@@ -774,7 +783,7 @@ __reinit_envelope
     lsl     AL                      ; 1   it to simulate noise prescaler
     ldi     AH, U_STEP              ; 1   Init update iterations
    .endif
-update_loop:
+loop:
 
     ; Update noise generator
     ; AVR8L_0: 16-4
@@ -821,7 +830,7 @@ exit_envelope:
     ; AVR8L_0: 6-3 
     ; V2/V2E:  10-3
     dec     AH                      ; 1   Decrement iteration counter and
-    brne    update_loop             ; 1|2 go to next interation
+    brne    loop                    ; 1|2 go to next interation
     sts     L(n_shifter), BL        ; 1~2 Save noise shifter into SRAM
     sts     H(n_shifter), BH        ; 1~2 Noise shifter high byte
     sts     L(e_counter), YL        ; 1~2 Save envelope counter into SRAM

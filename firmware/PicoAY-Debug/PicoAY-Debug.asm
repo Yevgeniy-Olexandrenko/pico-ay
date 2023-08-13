@@ -161,10 +161,10 @@ main:
 
     ; Software UART implementation
     proc_sw_uart_sbit_isr(EIMSK)
-    proc_sw_uart_dbit_isr(D, 2, EIFR, EIMSK)
+    proc_sw_uart_dbit_isr(D, 2, EIFR, EIMSK, B, 0)
 
     ; Hardware UART implementation
-    proc_hw_uart_data_isr_u(0)
+    proc_hw_uart_data_isr_u(0, B, 0)
 
 loop:
     ; Waiting for timer overflow and performing output

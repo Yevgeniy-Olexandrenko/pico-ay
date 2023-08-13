@@ -238,7 +238,7 @@ envelopes: __envelopes STEPS
 .macro delay
    .if      ((@1/3) > 0)
     ldi     @0, (@1/3)              ; 1
-lopp:
+loop:
     dec     @0                      ; 1
     brne    loop                    ; 1
    .endif
